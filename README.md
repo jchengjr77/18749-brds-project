@@ -10,4 +10,4 @@ Vignesh Rajmohan (vrajmoha)
 
 William Foy (wfoy)
 
-Jeremy Ryu
+Jeremy Ryu (jihoonr)
