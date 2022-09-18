@@ -13,13 +13,15 @@ import (
 /*
  * sendHeartbeatToServer sends a single heartbeat to the server
  */
-func sendHeartbeatToServer(conn net.Conn, myName string) {
+func sendHeartbeatToServer(conn net.Conn, myName string) error {
 	_, err := conn.Write([]byte(myName))
 	if err != nil {
-		// handle write error
-		fmt.Println("Error sending ID: ", err.Error())
+		// If server crashes, we should get a timeout / broken pipe error
+		fmt.Println("Error sending heartbeat: ", err.Error())
+		return err
 	}
 	fmt.Printf("[%s] Sent heartbeat to server\n", time.Now().Format(time.RFC850))
+	return nil
 }
 
 /*
@@ -28,7 +30,12 @@ func sendHeartbeatToServer(conn net.Conn, myName string) {
 func sendHeartbeatsRoutine(conn net.Conn, heartbeat_freq int, myID int) {
 	defer conn.Close()
 	for {
-		sendHeartbeatToServer(conn, "LFD"+strconv.Itoa(myID)+" heartbeat")
+		err := sendHeartbeatToServer(conn, "LFD"+strconv.Itoa(myID)+" heartbeat")
+		// If we have an error, likely the server has crashed and we will stop running
+		if err != nil {
+			fmt.Println("Server has crashed!")
+			return
+		}
 		time.Sleep(time.Duration(heartbeat_freq) * time.Second)
 	}
 }
