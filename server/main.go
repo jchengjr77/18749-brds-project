@@ -15,7 +15,7 @@ const (
 	PORT        = "8080"
 )
 
-func handleClient(conn net.Conn, clientID int) {
+func handleClient(conn net.Conn, clientID int, stateChan chan int) {
 	fmt.Println("New Client Connected! ID: ", clientID)
 	_, err := conn.Write([]byte(strconv.Itoa(clientID)))
 	if err != nil {
@@ -30,6 +30,7 @@ func handleClient(conn net.Conn, clientID int) {
 			return
 		}
 		fmt.Printf("[%s] Recieved '%s' from Client%d\n", time.Now().Format(time.RFC850), string(buf[:mlen]), clientID)
+		stateChan <- 1
 		_, err = conn.Write([]byte("Message ack"))
 		fmt.Printf("[%s] Replied to Client%d with ack\n", time.Now().Format(time.RFC850), clientID)
 
@@ -81,7 +82,13 @@ func listenLFD(conn net.Conn) {
 		fmt.Printf("[%s] Replied to LFD with ack\n", time.Now().Format(time.RFC850))
 	}
 }
+
+func incState(my_state *int) {
+	*my_state++
+	fmt.Println("New state: ", *my_state)
+}
 func main() {
+	my_state := 0
 	fmt.Println("---------- Server started ----------")
 
 	// client IDs, monotonically increasing
@@ -92,6 +99,9 @@ func main() {
 
 	// make channel for new connections
 	newClientChan := make(chan net.Conn)
+
+	// make channel for new incrementing state
+	stateChan := make(chan int)
 
 	// start the server
 	listener, err := net.Listen(SERVER_TYPE, HOST+":"+PORT)
@@ -118,13 +128,14 @@ func main() {
 
 	for {
 		select {
+		case <-stateChan:
+			incState(&my_state)
 		case conn := <-newClientChan:
-			go handleClient(conn, clientID)
+			go handleClient(conn, clientID, stateChan)
 			clients[clientID] = conn
 			clientID++
 		default:
-			time.Sleep(time.Second)
+			//time.Sleep(time.Second)
 		}
-
 	}
 }

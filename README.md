@@ -28,6 +28,6 @@ Jeremy Ryu (jihoonr)
  
 At this stage of the project, don’t worry as yet about replication, the Replication Manager, the Global Fault Detector, duplicate detection, or about automating the clients’ request messages in a loop.
 
-- [ ] (7) Show that the server S1 is “stateful,” and that its state is being modified by the receipt of the clients’ messages. On the console window, print the value of my_state before returning the reply to the client.
+- [x] (7) Show that the server S1 is “stateful,” and that its state is being modified by the receipt of the clients’ messages. On the console window, print the value of my_state before returning the reply to the client.
 - [ ] (8) Try killing (Control-C) the replica, S1, and you should see a heartbeat fail (i.e., timeout expiration) at the LFD1. The LFD1 should be able to detect that the replica, S1, died. Print this failed-heartbeat message on the console window of LFD1.
 - [ ] (9) Restart the whole system (repeat steps above) with a different heartbeat_freq for the LFD1.
