@@ -10,11 +10,33 @@ import (
 	"time"
 )
 
-func sendBeatToServer(conn net.Conn, myName string) {
-	_, err := conn.Write([]byte(myName))
+func sendMessageToServer(conn net.Conn, msg string) {
+	_, err := conn.Write([]byte(msg))
 	if err != nil {
 		// handle write error
 		fmt.Println("Error sending ID: ", err.Error())
+	}
+	fmt.Printf("[%s] Sent '%s' to server\n", time.Now().Format(time.RFC850), msg)
+}
+
+func sendMessages(conn net.Conn, MSGS []string, myID int) {
+	for {
+		randomIndex := rand.Intn(len(MSGS))
+		msg := MSGS[randomIndex]
+		sendMessageToServer(conn, msg)
+		time.Sleep(10 * time.Second)
+	}
+}
+
+func listenToServer(conn net.Conn) {
+	for {
+		buf := make([]byte, 1024)
+		mlen, err := conn.Read(buf)
+		if err != nil {
+			fmt.Println("Error reading: ", err.Error())
+			return
+		}
+		fmt.Printf("[%s] Recieved %s from server\n", time.Now().Format(time.RFC850), string(buf[:mlen]))
 	}
 }
 
@@ -58,11 +80,9 @@ func main() {
 		return
 	}
 	fmt.Println("Received Client ID: ", myID)
+
+	go sendMessages(conn, MSGS, myID)
+	go listenToServer(conn)
 	for {
-		randomIndex := rand.Intn(len(MSGS))
-		msg := MSGS[randomIndex]
-		sendBeatToServer(conn, strconv.Itoa(myID)+" pulse")
-		fmt.Println("Client ", myID, msg)
-		time.Sleep(10 * time.Second)
 	}
 }
