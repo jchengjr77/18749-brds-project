@@ -14,10 +14,23 @@ Jeremy Ryu (jihoonr)
 
 ## How To Run
 
+First, in the root director, run server with:
+
+`go run server/main.go`
+
+Next, run LFD with:
+
+`go run lfd/main.go`
+
+You may add a number as a CLI argument that will set a custom heartbeat_freq
+
+Finally, run clients with: 
+
+`go run client/main.go`
 
 ## Milestones 
 
-# Checkpoint One:
+### Checkpoint One:
 
 - [x] (1) Launch the server replica, S1.
 - [x] (2) Launch the LFD1, on the same machine, with some default heartbeat_freq. It should start heartbeating the server replica periodically, and in a continuous loop. The periodic messages from LFD1 S1 must be visible and printed on the console window for the LFD1. The sending and receipt of these messages must be printed on the console window for server S1.
