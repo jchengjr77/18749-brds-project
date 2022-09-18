@@ -10,6 +10,9 @@ import (
 	"time"
 )
 
+/*
+ * sendMessageToServer sends a single message to the server
+ */
 func sendMessageToServer(conn net.Conn, msg string) {
 	_, err := conn.Write([]byte(msg))
 	if err != nil {
@@ -19,7 +22,10 @@ func sendMessageToServer(conn net.Conn, msg string) {
 	fmt.Printf("[%s] Sent '%s' to server\n", time.Now().Format(time.RFC850), msg)
 }
 
-func sendMessages(conn net.Conn, MSGS []string, myID int) {
+/*
+ * sendMessagesRoutine is a routine that sends a message to server every 10 seconds
+ */
+func sendMessagesRoutine(conn net.Conn, MSGS []string, myID int) {
 	for {
 		randomIndex := rand.Intn(len(MSGS))
 		msg := MSGS[randomIndex]
@@ -28,7 +34,10 @@ func sendMessages(conn net.Conn, MSGS []string, myID int) {
 	}
 }
 
-func listenToServer(conn net.Conn) {
+/*
+ * listenToServerRoutine is a routine that listens to messages from server
+ */
+func listenToServerRoutine(conn net.Conn) {
 	for {
 		buf := make([]byte, 1024)
 		mlen, err := conn.Read(buf)
@@ -81,8 +90,8 @@ func main() {
 	}
 	fmt.Println("Received Client ID: ", myID)
 
-	go sendMessages(conn, MSGS, myID)
-	go listenToServer(conn)
+	go sendMessagesRoutine(conn, MSGS, myID)
+	go listenToServerRoutine(conn)
 	for {
 	}
 }

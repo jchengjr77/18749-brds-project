@@ -10,7 +10,10 @@ import (
 	"time"
 )
 
-func sendBeatToServer(conn net.Conn, myName string) {
+/*
+ * sendHeartbeatToServer sends a single heartbeat to the server
+ */
+func sendHeartbeatToServer(conn net.Conn, myName string) {
 	_, err := conn.Write([]byte(myName))
 	if err != nil {
 		// handle write error
@@ -19,15 +22,21 @@ func sendBeatToServer(conn net.Conn, myName string) {
 	fmt.Printf("[%s] Sent heartbeat to server\n", time.Now().Format(time.RFC850))
 }
 
-func sendHeartbeats(conn net.Conn, heartbeat_freq int, myID int) {
+/*
+ * sendHeartbeatsRoutine is a routine that sends a heartbeat to server every heartbeat_freq seconds
+ */
+func sendHeartbeatsRoutine(conn net.Conn, heartbeat_freq int, myID int) {
 	defer conn.Close()
 	for {
-		sendBeatToServer(conn, "LFD"+strconv.Itoa(myID)+" heartbeat")
+		sendHeartbeatToServer(conn, "LFD"+strconv.Itoa(myID)+" heartbeat")
 		time.Sleep(time.Duration(heartbeat_freq) * time.Second)
 	}
 }
 
-func listenToServer(conn net.Conn) {
+/*
+ * listenToServerRoutine is a routine that listens to messages from server
+ */
+func listenToServerRoutine(conn net.Conn) {
 	for {
 		buf := make([]byte, 1024)
 		mlen, err := conn.Read(buf)
@@ -75,8 +84,8 @@ func main() {
 	}
 	fmt.Println("Received LFD ID: ", myID)
 
-	go sendHeartbeats(conn, heartbeat_freq, myID)
-	go listenToServer(conn)
+	go sendHeartbeatsRoutine(conn, heartbeat_freq, myID)
+	go listenToServerRoutine(conn)
 	for {
 	}
 }
