@@ -10,4 +10,37 @@ Vignesh Rajmohan (vrajmoha)
 
 William Foy (wfoy)
 
-Jeremy Ryu (jihoonr)
+Jeremy Ryu (jihoonr) 
+
+## How To Run
+
+First, in the root director, run server with:
+
+`go run server/main.go`
+
+Next, run LFD with:
+
+`go run lfd/main.go`
+
+You may add a number as a CLI argument that will set a custom heartbeat_freq
+
+Finally, run clients with: 
+
+`go run client/main.go`
+
+## Milestones 
+
+### Checkpoint One:
+
+- [x] (1) Launch the server replica, S1.
+- [x] (2) Launch the LFD1, on the same machine, with some default heartbeat_freq. It should start heartbeating the server replica periodically, and in a continuous loop. The periodic messages from LFD1 S1 must be visible and printed on the console window for the LFD1. The sending and receipt of these messages must be printed on the console window for server S1.
+- [x] (3) Launch the 3 independent clients, C1, C2 and C3, one at a time.
+- [x] (4) The 3 clients should start sending messages to the server replica, S1. You can manually send messages from each client.
+- [x] (5) The sending of the request messages from C1 S1 , C2 S1, C3 S1 must be printed on the console windows for each of the clients, C1, C2, and C3, respectively. The receipt of these request messages must also be visible on the console window for server S1.
+- [x] (6) The sending of the reply messages S1 C1, S1 C2, S1 C3 must be printed on the console windows for each of the clients, C1, C2, and C3, respectively. The sending of these reply messages must also be visible on the console window for server S1.
+ 
+At this stage of the project, don’t worry as yet about replication, the Replication Manager, the Global Fault Detector, duplicate detection, or about automating the clients’ request messages in a loop.
+
+- [x] (7) Show that the server S1 is “stateful,” and that its state is being modified by the receipt of the clients’ messages. On the console window, print the value of my_state before returning the reply to the client.
+- [x] (8) Try killing (Control-C) the replica, S1, and you should see a heartbeat fail (i.e., timeout expiration) at the LFD1. The LFD1 should be able to detect that the replica, S1, died. Print this failed-heartbeat message on the console window of LFD1.
+- [x] (9) Restart the whole system (repeat steps above) with a different heartbeat_freq for the LFD1.
