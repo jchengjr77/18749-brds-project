@@ -35,6 +35,16 @@ func sendMessagesRoutine(conn net.Conn, MSGS []string, myID int) {
 }
 
 /*
+ * sendIDRoutine only sends the client ID to the server
+ */
+func sendIDRoutine(conn net.Conn, myID int) {
+	for {
+		sendMessageToServer(conn, strconv.Itoa(myID))
+		time.Sleep(10 * time.Second)
+	}
+}
+
+/*
  * listenToServerRoutine is a routine that listens to messages from server
  */
 func listenToServerRoutine(conn net.Conn) {
@@ -76,6 +86,8 @@ func main() {
 		" faints for a sec, and comes back up",
 		" has to call its parents",
 	}
+	// silence declared-but-unused error
+	_ = MSGS
 
 	buf := make([]byte, 1024)
 	mlen, err := conn.Read(buf)
@@ -90,7 +102,8 @@ func main() {
 	}
 	fmt.Println("Received Client ID: ", myID)
 
-	go sendMessagesRoutine(conn, MSGS, myID)
+	// go sendMessagesRoutine(conn, MSGS, myID)
+	go sendIDRoutine(conn, myID)
 	go listenToServerRoutine(conn)
 	for {
 	}
