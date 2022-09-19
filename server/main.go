@@ -29,8 +29,14 @@ func handleClient(conn net.Conn, clientID int, stateChan chan int) {
 			fmt.Println("Error reading: ", err.Error())
 			return
 		}
-		fmt.Printf("[%s] Recieved '%s' from Client%d\n", time.Now().Format(time.RFC850), string(buf[:mlen]), clientID)
-		stateChan <- 1
+		msg := string(buf[:mlen])
+		fmt.Printf("[%s] Recieved '%s' from Client%d\n", time.Now().Format(time.RFC850), msg, clientID)
+		lastID, err := strconv.Atoi(msg)
+		if err != nil {
+			fmt.Println("Error converting using Atoi: ", err.Error())
+			return
+		}
+		stateChan <- lastID
 		_, err = conn.Write([]byte("Message ack"))
 		fmt.Printf("[%s] Replied to Client%d with ack\n", time.Now().Format(time.RFC850), clientID)
 
@@ -83,8 +89,8 @@ func listenLFD(conn net.Conn) {
 	}
 }
 
-func incState(my_state *int) {
-	*my_state++
+func setState(my_state *int, val int) {
+	*my_state = val
 	fmt.Println("New state: ", *my_state)
 }
 func main() {
@@ -128,8 +134,8 @@ func main() {
 
 	for {
 		select {
-		case <-stateChan:
-			incState(&my_state)
+		case recentID := <-stateChan:
+			setState(&my_state, recentID)
 		case conn := <-newClientChan:
 			go handleClient(conn, clientID, stateChan)
 			clients[clientID] = conn
