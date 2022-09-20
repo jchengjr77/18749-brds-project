@@ -39,6 +39,7 @@ func sendMessagesRoutine(conn net.Conn, MSGS []string, myID int) {
  */
 func sendIDRoutine(conn net.Conn, myID int) {
 	for {
+		fmt.Println("Press 'Enter' to send message to server...")
 		fmt.Scanln()
 		sendMessageToServer(conn, strconv.Itoa(myID))
 	}
