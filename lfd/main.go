@@ -33,7 +33,7 @@ func sendHeartbeatsRoutine(conn net.Conn, heartbeat_freq int, myID int) {
 		err := sendHeartbeatToServer(conn, "LFD"+strconv.Itoa(myID)+" heartbeat")
 		// If we have an error, likely the server has crashed and we will stop running
 		if err != nil {
-			fmt.Println("Server has crashed!")
+			fmt.Printf("[%s] Server has crashed!\n", time.Now().Format(time.RFC850))
 			return
 		}
 		time.Sleep(time.Duration(heartbeat_freq) * time.Second)

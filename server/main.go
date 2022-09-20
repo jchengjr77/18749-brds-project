@@ -110,7 +110,7 @@ func main() {
 	stateChan := make(chan int)
 
 	// start the server
-	listener, err := net.Listen(SERVER_TYPE, HOST+":"+PORT)
+	listener, err := net.Listen(SERVER_TYPE, ":"+PORT)
 	if err != nil {
 		// handle server initialization error
 		fmt.Println("Error initializing: ", err.Error())
