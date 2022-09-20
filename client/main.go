@@ -39,8 +39,8 @@ func sendMessagesRoutine(conn net.Conn, MSGS []string, myID int) {
  */
 func sendIDRoutine(conn net.Conn, myID int) {
 	for {
+		fmt.Scanln()
 		sendMessageToServer(conn, strconv.Itoa(myID))
-		time.Sleep(10 * time.Second)
 	}
 }
 
