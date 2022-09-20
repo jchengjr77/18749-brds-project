@@ -63,7 +63,7 @@ func main() {
 	fmt.Println("---------- Client started ----------")
 
 	// connect to server
-	conn, err := net.Dial("tcp", ":8080")
+	conn, err := net.Dial("tcp", "Nathans-Macbook-Pro-7.local:8080")
 	if err != nil {
 		// handle connection error
 		fmt.Println("Error dialing: ", err.Error())
