@@ -4,34 +4,35 @@ package main
 
 import (
 	"fmt"
-	"math/rand"
 	"net"
 	"strconv"
 	"time"
 )
 
 /*
+ * formats and prints important logging messages
+ */
+func printMsg(clientID int, serverID int, msg string, msgType string) {
+	var action string
+	if (msgType == "request") {
+		action = "Sent"
+	} else {
+		action = "Received"
+	}
+	fmt.Printf("[%s] %s <%d, %d, %s, %s>\n", time.Now().Format(time.RFC850), action, clientID, serverID, msg, msgType)
+}
+
+/*
  * sendMessageToServer sends a single message to the server
  */
-func sendMessageToServer(conn net.Conn, msg string) {
+func sendMessageToServer(conn net.Conn, msg string, clientID int) {
 	_, err := conn.Write([]byte(msg))
 	if err != nil {
 		// handle write error
 		fmt.Println("Error sending ID: ", err.Error())
 	}
-	fmt.Printf("[%s] Sent '%s' to server\n", time.Now().Format(time.RFC850), msg)
-}
 
-/*
- * sendMessagesRoutine is a routine that sends a message to server every 10 seconds
- */
-func sendMessagesRoutine(conn net.Conn, MSGS []string, myID int) {
-	for {
-		randomIndex := rand.Intn(len(MSGS))
-		msg := MSGS[randomIndex]
-		sendMessageToServer(conn, msg)
-		time.Sleep(10 * time.Second)
-	}
+	printMsg(clientID, 1, msg, "request")
 }
 
 /*
@@ -39,16 +40,26 @@ func sendMessagesRoutine(conn net.Conn, MSGS []string, myID int) {
  */
 func sendIDRoutine(conn net.Conn, myID int) {
 	for {
+		time.Sleep(10 * time.Second)
+		sendMessageToServer(conn, strconv.Itoa(myID), myID)
+	}
+}
+
+/*
+ * manually send a message (your clientID) to the server
+ */
+func manuallySendIDRoutine(conn net.Conn, myID int) {
+	for {
 		fmt.Println("Press 'Enter' to send message to server...")
 		fmt.Scanln()
-		sendMessageToServer(conn, strconv.Itoa(myID))
+		sendMessageToServer(conn, strconv.Itoa(myID), myID)
 	}
 }
 
 /*
  * listenToServerRoutine is a routine that listens to messages from server
  */
-func listenToServerRoutine(conn net.Conn) {
+func listenToServerRoutine(conn net.Conn, myID int) {
 	for {
 		buf := make([]byte, 1024)
 		mlen, err := conn.Read(buf)
@@ -56,7 +67,8 @@ func listenToServerRoutine(conn net.Conn) {
 			fmt.Println("Error reading: ", err.Error())
 			return
 		}
-		fmt.Printf("[%s] Recieved %s from server\n", time.Now().Format(time.RFC850), string(buf[:mlen]))
+
+		printMsg(myID, 1, string(buf[:mlen]), "reply")
 	}
 }
 
@@ -64,7 +76,8 @@ func main() {
 	fmt.Println("---------- Client started ----------")
 
 	// connect to server
-	conn, err := net.Dial("tcp", "Nathans-Macbook-Pro-7.local:8080")
+	// conn, err := net.Dial("tcp", "Nathans-Macbook-Pro-7.local:8080")
+	conn, err := net.Dial("tcp", "localhost:8080")
 	if err != nil {
 		// handle connection error
 		fmt.Println("Error dialing: ", err.Error())
@@ -103,9 +116,9 @@ func main() {
 	}
 	fmt.Println("Received Client ID: ", myID)
 
-	// go sendMessagesRoutine(conn, MSGS, myID)
 	go sendIDRoutine(conn, myID)
-	go listenToServerRoutine(conn)
+	go manuallySendIDRoutine(conn, myID)
+	go listenToServerRoutine(conn, myID)
 	for {
 	}
 }

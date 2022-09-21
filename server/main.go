@@ -11,9 +11,18 @@ import (
 
 const (
 	SERVER_TYPE = "tcp"
-	HOST        = "localhost"
-	PORT        = "8080"
+	PORT = "8080"
 )
+
+func printMsg(clientID int, serverID int, msg string, msgType string) {
+	var action string
+	if (msgType == "request") {
+		action = "Received"
+	} else {
+		action = "Sent"
+	}
+	fmt.Printf("[%s] %s <%d, %d, %s, %s>\n", time.Now().Format(time.RFC850), action, clientID, serverID, msg, msgType)
+}
 
 func handleClient(conn net.Conn, clientID int, stateChan chan int) {
 	fmt.Println("New Client Connected! ID: ", clientID)
@@ -30,7 +39,7 @@ func handleClient(conn net.Conn, clientID int, stateChan chan int) {
 			return
 		}
 		msg := string(buf[:mlen])
-		fmt.Printf("[%s] Recieved '%s' from Client%d\n", time.Now().Format(time.RFC850), msg, clientID)
+		printMsg(clientID, 1, msg, "request")
 		lastID, err := strconv.Atoi(msg)
 		if err != nil {
 			fmt.Println("Error converting using Atoi: ", err.Error())
@@ -38,8 +47,7 @@ func handleClient(conn net.Conn, clientID int, stateChan chan int) {
 		}
 		stateChan <- lastID
 		_, err = conn.Write([]byte("Message ack"))
-		fmt.Printf("[%s] Replied to Client%d with ack\n", time.Now().Format(time.RFC850), clientID)
-
+		printMsg(clientID, 1, "ack", "reply")
 	}
 }
 
@@ -90,9 +98,11 @@ func listenLFD(conn net.Conn) {
 }
 
 func setState(my_state *int, val int) {
+	fmt.Printf("[%s] my_state = %d -> %d \n", time.Now().Format(time.RFC850), *my_state, val)
 	*my_state = val
-	fmt.Println("New state: ", *my_state)
 }
+
+
 func main() {
 	my_state := 0
 	fmt.Println("---------- Server started ----------")
