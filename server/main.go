@@ -5,6 +5,7 @@ package main
 import (
 	"fmt"
 	"net"
+	"os"
 	"strconv"
 	"time"
 )
@@ -63,9 +64,9 @@ func listenerChannelWrapper(listener net.Listener, newClientChan chan net.Conn) 
 	}
 }
 
-func connectToLFD(listener net.Listener) (conn net.Conn) {
+func connectToLFD(serverId int) (conn net.Conn) {
 	// First connect to LFD
-	conn, err := listener.Accept()
+	conn, err := net.Dial("tcp", ":8081")
 	if err != nil {
 		// handle connection error
 		fmt.Println("Error accepting: ", err.Error())
@@ -73,7 +74,7 @@ func connectToLFD(listener net.Listener) (conn net.Conn) {
 	}
 
 	fmt.Println("LFD1 Connected!")
-	_, err = conn.Write([]byte(strconv.Itoa(1)))
+	_, err = conn.Write([]byte(strconv.Itoa(serverId)))
 	if err != nil {
 		// handle write error
 		fmt.Println("Error sending ID: ", err.Error())
@@ -83,14 +84,14 @@ func connectToLFD(listener net.Listener) (conn net.Conn) {
 
 func listenLFD(conn net.Conn) {
 	for {
-		// Recieve heartbeat from LFD
+		// Receive heartbeat from LFD
 		buf := make([]byte, 1024)
 		mlen, err := conn.Read(buf)
 		if err != nil {
 			fmt.Println("Error reading: ", err.Error())
 			return
 		}
-		fmt.Printf("[%s] Recieved %s\n", time.Now().Format(time.RFC850), string(buf[:mlen]))
+		fmt.Printf("[%s] Received %s\n", time.Now().Format(time.RFC850), string(buf[:mlen]))
 		// Send reply to LFD
 		_, err = conn.Write([]byte("Heartbeat Ack"))
 		fmt.Printf("[%s] Replied to LFD with ack\n", time.Now().Format(time.RFC850))
@@ -104,8 +105,19 @@ func setState(my_state *int, val int) {
 
 
 func main() {
+	args := os.Args[1:]
+	if len(args) < 1 {
+		fmt.Printf("Usage: go run server/main.go <server id>")
+		return
+	}
+	serverId, err := strconv.Atoi(args[0])
+	if err != nil {
+		fmt.Println("Error parsing args: ", err.Error())
+		return
+	}
+
 	my_state := 0
-	fmt.Println("---------- Server started ----------")
+	fmt.Println("---------- Server %d started ----------", serverId)
 
 	// client IDs, monotonically increasing
 	clientID := 1
@@ -127,7 +139,7 @@ func main() {
 		return
 	}
 
-	lfdConn := connectToLFD(listener)
+	lfdConn := connectToLFD(serverId)
 	go listenLFD(lfdConn)
 
 	go listenerChannelWrapper(listener, newClientChan)
