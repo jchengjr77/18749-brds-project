@@ -5,8 +5,10 @@ package main
 import (
 	"fmt"
 	"net"
+	"os"
 	"strconv"
 	"time"
+	"strings"
 )
 
 const (
@@ -24,7 +26,7 @@ func printMsg(clientID int, serverID int, msg string, msgType string) {
 	fmt.Printf("[%s] %s <%d, %d, %s, %s>\n", time.Now().Format(time.RFC850), action, clientID, serverID, msg, msgType)
 }
 
-func handleClient(conn net.Conn, clientID int, stateChan chan int) {
+func handleClient(conn net.Conn, clientID int, serverID int, stateChan chan int) {
 	fmt.Println("New Client Connected! ID: ", clientID)
 	_, err := conn.Write([]byte(strconv.Itoa(clientID)))
 	if err != nil {
@@ -39,15 +41,21 @@ func handleClient(conn net.Conn, clientID int, stateChan chan int) {
 			return
 		}
 		msg := string(buf[:mlen])
-		printMsg(clientID, 1, msg, "request")
-		lastID, err := strconv.Atoi(msg)
+		printMsg(clientID, serverID, msg, "request")
+		clientIDInd := strings.Index(msg, "clientid:")
+		clientID, err := strconv.Atoi(msg[clientIDInd+len("clientid:"):])
 		if err != nil {
 			fmt.Println("Error converting using Atoi: ", err.Error())
-			return
+			continue
 		}
-		stateChan <- lastID
-		_, err = conn.Write([]byte("Message ack"))
-		printMsg(clientID, 1, "ack", "reply")
+		stateChan <- clientID
+		sepInd := strings.Index(msg, ",")
+		ackMsg := msg[:sepInd] + ",serverid:" + strconv.Itoa(serverID)
+		_, err = conn.Write([]byte(ackMsg))
+		if err != nil {
+			fmt.Println("Error sending ack: ", err.Error())
+		}
+		printMsg(clientID, serverID, ackMsg, "reply")
 	}
 }
 
@@ -63,17 +71,17 @@ func listenerChannelWrapper(listener net.Listener, newClientChan chan net.Conn) 
 	}
 }
 
-func connectToLFD(listener net.Listener) (conn net.Conn) {
+func connectToLFD(serverId int) (conn net.Conn) {
 	// First connect to LFD
-	conn, err := listener.Accept()
+	conn, err := net.Dial("tcp", ":8081")
 	if err != nil {
 		// handle connection error
 		fmt.Println("Error accepting: ", err.Error())
-		return
+		return nil
 	}
 
 	fmt.Println("LFD1 Connected!")
-	_, err = conn.Write([]byte(strconv.Itoa(1)))
+	_, err = conn.Write([]byte(strconv.Itoa(serverId)))
 	if err != nil {
 		// handle write error
 		fmt.Println("Error sending ID: ", err.Error())
@@ -83,14 +91,14 @@ func connectToLFD(listener net.Listener) (conn net.Conn) {
 
 func listenLFD(conn net.Conn) {
 	for {
-		// Recieve heartbeat from LFD
+		// Receive heartbeat from LFD
 		buf := make([]byte, 1024)
 		mlen, err := conn.Read(buf)
 		if err != nil {
 			fmt.Println("Error reading: ", err.Error())
 			return
 		}
-		fmt.Printf("[%s] Recieved %s\n", time.Now().Format(time.RFC850), string(buf[:mlen]))
+		fmt.Printf("[%s] Received %s\n", time.Now().Format(time.RFC850), string(buf[:mlen]))
 		// Send reply to LFD
 		_, err = conn.Write([]byte("Heartbeat Ack"))
 		fmt.Printf("[%s] Replied to LFD with ack\n", time.Now().Format(time.RFC850))
@@ -104,8 +112,19 @@ func setState(my_state *int, val int) {
 
 
 func main() {
+	args := os.Args[1:]
+	if len(args) < 1 {
+		fmt.Printf("Usage: go run server/main.go <server id>")
+		return
+	}
+	serverId, err := strconv.Atoi(args[0])
+	if err != nil {
+		fmt.Println("Error parsing args: ", err.Error())
+		return
+	}
+
 	my_state := 0
-	fmt.Println("---------- Server started ----------")
+	fmt.Printf("---------- Server %d started ----------\n", serverId)
 
 	// client IDs, monotonically increasing
 	clientID := 1
@@ -127,19 +146,20 @@ func main() {
 		return
 	}
 
-	lfdConn := connectToLFD(listener)
+	lfdConn := connectToLFD(serverId)
+	if lfdConn == nil {
+		fmt.Println("Could not connect to LFD")
+		return
+	}
 	go listenLFD(lfdConn)
-
 	go listenerChannelWrapper(listener, newClientChan)
 
 	defer listener.Close()
 
 	/**
-
 	1. spawn a listener thread
 	2. create a channel for new connections [between main thread and listener thread]
 	3. new select/case block in the main thread waits for new connections OR client death notifications
-
 	**/
 
 	for {
@@ -147,11 +167,9 @@ func main() {
 		case recentID := <-stateChan:
 			setState(&my_state, recentID)
 		case conn := <-newClientChan:
-			go handleClient(conn, clientID, stateChan)
+			go handleClient(conn, clientID, serverId, stateChan)
 			clients[clientID] = conn
 			clientID++
-		default:
-			//time.Sleep(time.Second)
 		}
 	}
 }
