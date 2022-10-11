@@ -8,6 +8,7 @@ import (
 	"os"
 	"strconv"
 	"time"
+	"strings"
 )
 
 const (
@@ -25,7 +26,7 @@ func printMsg(clientID int, serverID int, msg string, msgType string) {
 	fmt.Printf("[%s] %s <%d, %d, %s, %s>\n", time.Now().Format(time.RFC850), action, clientID, serverID, msg, msgType)
 }
 
-func handleClient(conn net.Conn, clientID int, stateChan chan int) {
+func handleClient(conn net.Conn, clientID int, serverID int, stateChan chan int) {
 	fmt.Println("New Client Connected! ID: ", clientID)
 	_, err := conn.Write([]byte(strconv.Itoa(clientID)))
 	if err != nil {
@@ -40,15 +41,21 @@ func handleClient(conn net.Conn, clientID int, stateChan chan int) {
 			return
 		}
 		msg := string(buf[:mlen])
-		printMsg(clientID, 1, msg, "request")
-		lastID, err := strconv.Atoi(msg)
+		printMsg(clientID, serverID, msg, "request")
+		clientIDInd := strings.Index(msg, "clientid:")
+		clientID, err := strconv.Atoi(msg[clientIDInd+len("clientid:"):])
 		if err != nil {
 			fmt.Println("Error converting using Atoi: ", err.Error())
-			return
+			continue
 		}
-		stateChan <- lastID
-		_, err = conn.Write([]byte("Message ack"))
-		printMsg(clientID, 1, "ack", "reply")
+		stateChan <- clientID
+		sepInd := strings.Index(msg, ",")
+		ackMsg := msg[:sepInd] + ",serverid:" + strconv.Itoa(serverID)
+		_, err = conn.Write([]byte(ackMsg))
+		if err != nil {
+			fmt.Println("Error sending ack: ", err.Error())
+		}
+		printMsg(clientID, serverID, ackMsg, "reply")
 	}
 }
 
@@ -70,7 +77,7 @@ func connectToLFD(serverId int) (conn net.Conn) {
 	if err != nil {
 		// handle connection error
 		fmt.Println("Error accepting: ", err.Error())
-		return
+		return nil
 	}
 
 	fmt.Println("LFD1 Connected!")
@@ -117,7 +124,7 @@ func main() {
 	}
 
 	my_state := 0
-	fmt.Println("---------- Server %d started ----------", serverId)
+	fmt.Printf("---------- Server %d started ----------\n", serverId)
 
 	// client IDs, monotonically increasing
 	clientID := 1
@@ -140,18 +147,19 @@ func main() {
 	}
 
 	lfdConn := connectToLFD(serverId)
+	if lfdConn == nil {
+		fmt.Println("Could not connect to LFD")
+		return
+	}
 	go listenLFD(lfdConn)
-
 	go listenerChannelWrapper(listener, newClientChan)
 
 	defer listener.Close()
 
 	/**
-
 	1. spawn a listener thread
 	2. create a channel for new connections [between main thread and listener thread]
 	3. new select/case block in the main thread waits for new connections OR client death notifications
-
 	**/
 
 	for {
@@ -159,11 +167,9 @@ func main() {
 		case recentID := <-stateChan:
 			setState(&my_state, recentID)
 		case conn := <-newClientChan:
-			go handleClient(conn, clientID, stateChan)
+			go handleClient(conn, clientID, serverId, stateChan)
 			clients[clientID] = conn
 			clientID++
-		default:
-			//time.Sleep(time.Second)
 		}
 	}
 }

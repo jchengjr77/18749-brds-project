@@ -7,6 +7,7 @@ import (
 	"net"
 	"strconv"
 	"time"
+	"strings"
 )
 
 /*
@@ -25,41 +26,35 @@ func printMsg(clientID int, serverID int, msg string, msgType string) {
 /*
  * sendMessageToServer sends a single message to the server
  */
-func sendMessageToServer(conn net.Conn, msg string, clientID int) {
+func sendMessageToServer(conn net.Conn, msg string, clientID int, serverID int) {
 	_, err := conn.Write([]byte(msg))
 	if err != nil {
-		// handle write error
-		fmt.Println("Error sending ID: ", err.Error())
+		fmt.Println("Error sending message to server: ", err.Error())
 	}
-
-	printMsg(clientID, 1, msg, "request")
-}
-
-/*
- * sendIDRoutine only sends the client ID to the server
- */
-func sendIDRoutine(conn net.Conn, myID int) {
-	for {
-		time.Sleep(10 * time.Second)
-		sendMessageToServer(conn, strconv.Itoa(myID), myID)
-	}
+	printMsg(clientID, serverID, msg, "request")
 }
 
 /*
  * manually send a message (your clientID) to the server
  */
-func manuallySendIDRoutine(conn net.Conn, myID int) {
+func manuallySendIDRoutine(connMap, servMap map[net.Conn]int) {
+	reqNum := 0
 	for {
 		fmt.Println("Press 'Enter' to send message to server...")
 		fmt.Scanln()
-		sendMessageToServer(conn, strconv.Itoa(myID), myID)
+		for conn, id := range connMap {
+			s := "requestnum:" + strconv.Itoa(reqNum) + ",clientid:" + strconv.Itoa(id)
+			go sendMessageToServer(conn, s, id, servMap[conn])
+		}
+		time.Sleep(2 * time.Second) //can send max once every 2 seconds
+		reqNum++
 	}
 }
 
 /*
  * listenToServerRoutine is a routine that listens to messages from server
  */
-func listenToServerRoutine(conn net.Conn, myID int) {
+func listenToServerRoutine(conn net.Conn, myID int, serverID int, msgChan chan string, repChan chan bool) {
 	for {
 		buf := make([]byte, 1024)
 		mlen, err := conn.Read(buf)
@@ -67,58 +62,74 @@ func listenToServerRoutine(conn net.Conn, myID int) {
 			fmt.Println("Error reading: ", err.Error())
 			return
 		}
+		msgChan <- string(buf[:mlen])
+		dup := <- repChan
+		if !dup {
+			printMsg(myID, serverID, string(buf[:mlen]), "reply")
+		}
+	}
+}
 
-		printMsg(myID, 1, string(buf[:mlen]), "reply")
+func processMsgs(msgChan chan string, repChan chan bool) {
+	resSet := make(map[int]struct{})
+	for {
+		msg := <- msgChan //block until message is received
+		endInd := strings.Index(msg, ",")
+		req := msg[len("requestnum:"):endInd]
+		reqNum, _ := strconv.Atoi(req)
+		idInd := strings.Index(msg, "serverid:")
+		id := msg[idInd+len("serverid:"):]
+		_, exists := resSet[reqNum]
+		dup := false
+		if exists { //if duplicate
+			fmt.Println("request_num " + req + ": Discarded duplicate reply from S" + id)
+			dup = true
+		} else {
+			resSet[reqNum] = struct{}{}
+		}
+		repChan <- dup
 	}
 }
 
 func main() {
 	fmt.Println("---------- Client started ----------")
 
-	// connect to server
-	// conn, err := net.Dial("tcp", "Nathans-Macbook-Pro-7.local:8080")
-	conn, err := net.Dial("tcp", "localhost:8080")
-	if err != nil {
-		// handle connection error
-		fmt.Println("Error dialing: ", err.Error())
-		return
+	var servers = []string{
+		"Wills-Macbook-Pro-4.local:8080",
+		"Wills-Macbook-Pro-4.local:8079",
+		"Wills-Macbook-Pro-4.local:8078",
 	}
 
-	var MSGS = []string{
-		" is still alive and kicking!",
-		" is having a blast!",
-		" wants to head out soon",
-		" says the server is kind of mean to it",
-		" thinks you're cute",
-		" wants to change its ID",
-		" didn't respond to my texts",
-		" secretly watches youtube during lecture",
-		" does a backflip",
-		" thinks you programmers should write more client messages",
-		" smells a segfault coming",
-		" is ordering a caramel macchiato",
-		" faints for a sec, and comes back up",
-		" has to call its parents",
-	}
-	// silence declared-but-unused error
-	_ = MSGS
+	connMap := map[net.Conn]int{}
+	servMap := map[net.Conn]int{}
+	msgChan := make(chan string)
+	repChan := make(chan bool)
+	for i, server := range servers {
+		// connect to servers
+		// conn, err := net.Dial("tcp", "Nathans-Macbook-Pro-7.local:8080")
+		conn, err := net.Dial("tcp", server)
+		if err != nil {
+			// handle connection error
+			fmt.Println("Error dialing: ", err.Error())
+			return
+		}
 
-	buf := make([]byte, 1024)
-	mlen, err := conn.Read(buf)
-	if err != nil {
-		fmt.Println("Error reading: ", err.Error())
-		return
+		buf := make([]byte, 1024)
+		mlen, err := conn.Read(buf)
+		if err != nil {
+			fmt.Println("Error reading: ", err.Error())
+			return
+		}
+		myID, err := strconv.Atoi(string(buf[:mlen]))
+		if err != nil {
+			fmt.Println("Error converting ID data:", err.Error())
+			return
+		}
+		fmt.Println("Received Client ID: ", myID)
+		connMap[conn] = myID
+		servMap[conn] = i + 1
+		go listenToServerRoutine(conn, myID, i+1, msgChan, repChan)
 	}
-	myID, err := strconv.Atoi(string(buf[:mlen]))
-	if err != nil {
-		fmt.Println("Error converting ID data:", err.Error())
-		return
-	}
-	fmt.Println("Received Client ID: ", myID)
-
-	go sendIDRoutine(conn, myID)
-	go manuallySendIDRoutine(conn, myID)
-	go listenToServerRoutine(conn, myID)
-	for {
-	}
+	go processMsgs(msgChan, repChan)
+	manuallySendIDRoutine(connMap, servMap)
 }
