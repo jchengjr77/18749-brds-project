@@ -12,7 +12,7 @@ import (
 
 const (
 	SERVER_TYPE = "tcp"
-	PORT = "8081"
+	PORT        = "8081"
 )
 
 /*
@@ -39,7 +39,7 @@ func sendHeartbeatsRoutine(conn net.Conn, heartbeatFreq int, myId int, gfdConn n
 		// If we have an error, likely the server has crashed and we will stop running
 		if err != nil {
 			fmt.Printf("[%s] Server has crashed!\n", time.Now().Format(time.RFC850))
-			_, err := gfdConn.Write([]byte(strconv.Itoa(myId)+",remove"))
+			_, err := gfdConn.Write([]byte(strconv.Itoa(myId) + ",remove"))
 			if err != nil {
 				fmt.Printf("GFD has crashed!\n", time.Now().Format(time.RFC850))
 				return
@@ -47,7 +47,7 @@ func sendHeartbeatsRoutine(conn net.Conn, heartbeatFreq int, myId int, gfdConn n
 			return
 		}
 		if first {
-			_, err := gfdConn.Write([]byte(strconv.Itoa(myId)+",add"))
+			_, err := gfdConn.Write([]byte(strconv.Itoa(myId) + ",add"))
 			if err != nil {
 				fmt.Printf("GFD has crashed!\n", time.Now().Format(time.RFC850))
 				return
@@ -90,6 +90,9 @@ func main() {
 	var err error
 	heartbeatFreq := 1
 
+	/* args[0] is the heartbeatFreq
+	 * args[1] is the Host Name
+	 */
 	args := os.Args[1:]
 	if len(args) > 0 {
 		heartbeatFreq, err = strconv.Atoi(args[0])
@@ -100,18 +103,8 @@ func main() {
 		fmt.Printf("Set heartbeat frequency to %d seconds\n", heartbeatFreq)
 	}
 
-
-	// listen for server connection
-	listener, err := net.Listen(SERVER_TYPE, ":"+PORT)
-	if err != nil {
-		// handle server initialization error
-		fmt.Println("Error initializing: ", err.Error())
-		return
-	}
-	defer listener.Close()
-
 	//connect to gfd
-	gfdConn, err := net.Dial("tcp", ":8000")
+	gfdConn, err := net.Dial("tcp", args[1]+":8000")
 	if err != nil {
 		// handle connection error
 		fmt.Println("Error dialing: ", err.Error())
@@ -131,27 +124,35 @@ func main() {
 	}
 	fmt.Println("Received LFD ID: ", lfdID)
 
+	// listen for server connection
+	listener, err := net.Listen(SERVER_TYPE, ":"+PORT)
+	if err != nil {
+		// handle server initialization error
+		fmt.Println("Error initializing: ", err.Error())
+		return
+	}
+	defer listener.Close()
 
 	newServerChan := make(chan net.Conn)
 	go listenForServers(listener, newServerChan)
 	for {
 		select {
-			case conn := <- newServerChan:
-				buf := make([]byte, 1024)
-				mlen, err := conn.Read(buf)
-				if err != nil {
-					fmt.Println("Error reading: ", err.Error())
-					return
-				}
-				serverID, err := strconv.Atoi(string(buf[:mlen]))
-				if err != nil {
-					fmt.Println("Error converting ID data:", err.Error())
-					return
-				}
-				fmt.Println("Received ID from server: ", serverID)
-			
-				go sendHeartbeatsRoutine(conn, heartbeatFreq, serverID, gfdConn)
-				go listenToServerRoutine(conn)
+		case conn := <-newServerChan:
+			buf := make([]byte, 1024)
+			mlen, err := conn.Read(buf)
+			if err != nil {
+				fmt.Println("Error reading: ", err.Error())
+				return
+			}
+			serverID, err := strconv.Atoi(string(buf[:mlen]))
+			if err != nil {
+				fmt.Println("Error converting ID data:", err.Error())
+				return
+			}
+			fmt.Println("Received ID from server: ", serverID)
+
+			go sendHeartbeatsRoutine(conn, heartbeatFreq, serverID, gfdConn)
+			go listenToServerRoutine(conn)
 		}
 	}
 }

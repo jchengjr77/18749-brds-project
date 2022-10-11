@@ -5,9 +5,10 @@ package main
 import (
 	"fmt"
 	"net"
+	"os"
 	"strconv"
-	"time"
 	"strings"
+	"time"
 )
 
 /*
@@ -15,7 +16,7 @@ import (
  */
 func printMsg(clientID int, serverID int, msg string, msgType string) {
 	var action string
-	if (msgType == "request") {
+	if msgType == "request" {
 		action = "Sent"
 	} else {
 		action = "Received"
@@ -63,7 +64,7 @@ func listenToServerRoutine(conn net.Conn, myID int, serverID int, msgChan chan s
 			return
 		}
 		msgChan <- string(buf[:mlen])
-		dup := <- repChan
+		dup := <-repChan
 		if !dup {
 			printMsg(myID, serverID, string(buf[:mlen]), "reply")
 		}
@@ -73,7 +74,7 @@ func listenToServerRoutine(conn net.Conn, myID int, serverID int, msgChan chan s
 func processMsgs(msgChan chan string, repChan chan bool) {
 	resSet := make(map[int]struct{})
 	for {
-		msg := <- msgChan //block until message is received
+		msg := <-msgChan //block until message is received
 		endInd := strings.Index(msg, ",")
 		req := msg[len("requestnum:"):endInd]
 		reqNum, _ := strconv.Atoi(req)
@@ -94,20 +95,21 @@ func processMsgs(msgChan chan string, repChan chan bool) {
 func main() {
 	fmt.Println("---------- Client started ----------")
 
-	var servers = []string{
-		"Wills-Macbook-Pro-4.local:8080",
-		"Wills-Macbook-Pro-4.local:8079",
-		"Wills-Macbook-Pro-4.local:8078",
-	}
+	/* args[0] is the Host Name 1
+	 * args[1] is the Host Name 2
+	 * args[2] is the Host Name 3
+	 */
+
+	args := os.Args[1:]
 
 	connMap := map[net.Conn]int{}
 	servMap := map[net.Conn]int{}
 	msgChan := make(chan string)
 	repChan := make(chan bool)
-	for i, server := range servers {
+	for i, server := range args {
 		// connect to servers
 		// conn, err := net.Dial("tcp", "Nathans-Macbook-Pro-7.local:8080")
-		conn, err := net.Dial("tcp", server)
+		conn, err := net.Dial("tcp", server+":8080")
 		if err != nil {
 			// handle connection error
 			fmt.Println("Error dialing: ", err.Error())
