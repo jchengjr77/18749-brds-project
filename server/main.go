@@ -14,9 +14,9 @@ import (
 const (
 	SERVER_TYPE = "tcp"
 	PORT        = "8080"
-	PORT2		= "9080"
+	PORT2       = "9080"
 	SVR_PORT    = "8082"
-	SVR_PORT2	= "9082"
+	SVR_PORT2   = "9082"
 )
 
 type Pair struct {
@@ -260,13 +260,13 @@ func main() {
 	go listenLFD(lfdConn)
 	go listenerChannelWrapper(listener, newClientChan)
 	go primaryReplicaListenerWrapper(primaryReplicaListener, newPrimaryChan)
-	if (isPrimary) {
+	if isPrimary {
 		backupHostnames := args[3:]
 		go sendCheckpointsRoutine(
-			checkpointFreq, 
-			backupHostnames, 
+			checkpointFreq,
+			backupHostnames,
 			&my_checkpoint_count,
-			&my_state, 
+			&my_state,
 			incrementChan)
 	}
 
@@ -282,7 +282,7 @@ func main() {
 			clients[clientID] = conn
 			clientID++
 		case pair := <-checkpointChan:
-			if (!isPrimary) {
+			if !isPrimary {
 				cpNum := pair.First
 				cpState := pair.Second
 				fmt.Printf("[%s] received checkpoint %d -> %d, state %d -> %d \n", time.Now().Format(time.RFC850), my_checkpoint_count, cpNum, my_state, cpState)
