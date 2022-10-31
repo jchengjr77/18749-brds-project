@@ -7,24 +7,24 @@ import (
 	"net"
 	"os"
 	"strconv"
-	"time"
 	"strings"
+	"time"
 )
 
 const (
 	SERVER_TYPE = "tcp"
-	PORT = "8080"
-	SVR_PORT = "8082"
+	PORT        = "8080"
+	SVR_PORT    = "8082"
 )
 
 type Pair struct {
-	First int
+	First  int
 	Second int
 }
 
 func printMsg(clientID int, serverID int, msg string, msgType string) {
 	var action string
-	if (msgType == "request") {
+	if msgType == "request" {
 		action = "Received"
 	} else {
 		action = "Sent"
@@ -73,7 +73,7 @@ func handlePrimary(conn net.Conn, cpChan chan Pair) {
 		if err != nil {
 			fmt.Println("Error reading: ", err.Error())
 			return
-		}	
+		}
 		msg := string(buf[:mlen])
 		fmt.Println("[%s] received checkpoint %s", time.Now().Format(time.RFC850), msg)
 
@@ -90,6 +90,54 @@ func handlePrimary(conn net.Conn, cpChan chan Pair) {
 			continue
 		}
 		cpChan <- Pair{cpNum, cpState}
+	}
+}
+
+/*
+ * sendCheckpoint sends a single checkpoint to the backup replica server
+ */
+func sendCheckpoint(conn net.Conn, cpString string, incrChan chan bool) error {
+	_, err := conn.Write([]byte(cpString))
+	if err != nil {
+		// If server crashes, we should get a timeout / broken pipe error
+		fmt.Println("Error sending checkpoint: ", err.Error())
+		return err
+	}
+	fmt.Printf("[%s] Sent checkpoint [%s] to backup replica\n", time.Now().Format(time.RFC850), cpString)
+	incrChan <- true
+	return nil
+}
+
+// TODO: only send checkpoints messages to other replicas if primary
+/***
+	- uncomment the codelines above. (I needed to silence the "declared but not used" warning)
+	- if server is primary replica, use checkpointFreq to send checkpoint messages.
+	- the primary replica will have to dial() into the two backup replicas. See the client codebase for an example of this. (I defined the backup replica ports to be 8082)
+	- iterate through the backupHostnames and dial into each one at port 8082
+	- you can check arg[3], or isPrimary, to see if this server is the primary replica
+	- checkpoint_freq should be in seconds
+	- every time a new checkpoint message is sent, increment checkpoint_count
+	- checkpoint messages are of the format "<checkpointCount>,<state>"
+***/
+
+func sendCheckpointsRoutine(checkpointFreq int, isPrimary bool, backupHostnames []string, cpCount int, state int, incrChan chan bool) {
+	if isPrimary {
+		for _, hostname := range backupHostnames {
+			conn, err := net.Dial("tcp", hostname+":8082")
+			if err != nil {
+				// handle connection error
+				fmt.Println("Error dialing: ", err.Error())
+				return
+			}
+			for {
+				cpMessage := fmt.Sprintf("<%d><%d>", cpCount, state)
+				err := sendCheckpoint(conn, cpMessage, incrChan)
+				if err != nil {
+					fmt.Println("error sending checkpoint!")
+				}
+				time.Sleep(time.Duration(checkpointFreq) * time.Second)
+			}
+		}
 	}
 }
 
@@ -156,7 +204,6 @@ func setState(my_state *int, val int) {
 	*my_state = val
 }
 
-
 func main() {
 	args := os.Args[1:]
 	if len(args) < 1 {
@@ -168,25 +215,13 @@ func main() {
 		fmt.Println("Error parsing args: ", err.Error())
 		return
 	}
-	// checkpointFreq, err := strconv.Atoi(args[1])
-	// if err != nil {
-	// 	fmt.Println("Error parsing args: ", err.Error())
-	// 	return
-	// }
-	// isPrimary := (len(args) >= 3)
-	// backupHostnames := args[3:]
-
-	// TODO: only send checkpoints messages to other replicas if primary
-	/***
-		- uncomment the codelines above. (I needed to silence the "declared but not used" warning)
-		- if server is primary replica, use checkpointFreq to send checkpoint messages.
-		- the primary replica will have to dial() into the two backup replicas. See the client codebase for an example of this. (I defined the backup replica ports to be 8082)
-		- iterate through the backupHostnames and dial into each one at port 8082
-		- you can check arg[3], or isPrimary, to see if this server is the primary replica
-		- checkpoint_freq should be in seconds
-		- every time a new checkpoint message is sent, increment checkpoint_count
-		- checkpoint messages are of the format "<checkpointCount>,<state>"
-	***/
+	checkpointFreq, err := strconv.Atoi(args[1])
+	if err != nil {
+		fmt.Println("Error parsing args: ", err.Error())
+		return
+	}
+	isPrimary := (len(args) >= 3)
+	backupHostnames := args[3:]
 
 	my_state := 0
 	my_checkpoint_count := 1
@@ -203,6 +238,9 @@ func main() {
 
 	// make channel for new incrementing state
 	stateChan := make(chan int)
+
+	// make channel for incrementing checkpoint count
+	incrementChan := make(chan bool)
 
 	// make channels for new primary replica messages
 	newPrimaryChan := make(chan net.Conn)
@@ -247,11 +285,14 @@ func main() {
 		case pair := <-checkpointChan:
 			cpNum := pair.First
 			cpState := pair.Second
-			fmt.Printf("[%s] received checkpoint %d -> %d, state %d -> %d \n", time.Now().Format(time.RFC850), my_checkpoint_count, cpNum, my_state, cpState)	
+			fmt.Printf("[%s] received checkpoint %d -> %d, state %d -> %d \n", time.Now().Format(time.RFC850), my_checkpoint_count, cpNum, my_state, cpState)
 			my_checkpoint_count = cpNum
 			my_state = cpState
+			go sendCheckpointsRoutine(checkpointFreq, isPrimary, backupHostnames, my_checkpoint_count, my_state, incrementChan)
 		case conn := <-newPrimaryChan:
 			go handlePrimary(conn, checkpointChan)
-		} 
+		case <-incrementChan:
+			my_checkpoint_count++
+		}
 	}
 }
