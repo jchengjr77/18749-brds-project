@@ -7,18 +7,26 @@ import (
 	"net"
 	"os"
 	"strconv"
-	"time"
 	"strings"
+	"time"
 )
 
 const (
 	SERVER_TYPE = "tcp"
-	PORT = "8080"
+	PORT        = "8080"
+	PORT2       = "9080"
+	SVR_PORT    = "8082"
+	SVR_PORT2   = "9082"
 )
+
+type Pair struct {
+	First  int
+	Second int
+}
 
 func printMsg(clientID int, serverID int, msg string, msgType string) {
 	var action string
-	if (msgType == "request") {
+	if msgType == "request" {
 		action = "Received"
 	} else {
 		action = "Sent"
@@ -59,6 +67,65 @@ func handleClient(conn net.Conn, clientID int, serverID int, stateChan chan int)
 	}
 }
 
+func handlePrimary(conn net.Conn, cpChan chan Pair) {
+	fmt.Println("New Primary Replica Detected.")
+	for {
+		buf := make([]byte, 1024)
+		mlen, err := conn.Read(buf)
+		if err != nil {
+			fmt.Println("Error reading: ", err.Error())
+			return
+		}
+		msg := string(buf[:mlen])
+		fmt.Println("[%s] received checkpoint %s", time.Now().Format(time.RFC850), msg)
+
+		// checkpoint format <checkpoint num>,<state>
+		parts := strings.Split(msg, ",")
+		cpNum, err := strconv.Atoi(parts[0])
+		if err != nil {
+			fmt.Println("Error converting using Atoi: ", err.Error())
+			continue
+		}
+		cpState, err := strconv.Atoi(parts[1])
+		if err != nil {
+			fmt.Println("Error converting using Atoi: ", err.Error())
+			continue
+		}
+		cpChan <- Pair{cpNum, cpState}
+	}
+}
+
+/*
+ * sendCheckpoint sends a single checkpoint to the backup replica server
+ */
+func sendCheckpoint(host string, cpString string, incrChan chan bool) {
+	conn, err := net.Dial(SERVER_TYPE, host+":"+SVR_PORT)
+	if err != nil {
+		// handle connection error
+		fmt.Println("Error dialing backup replica: ", err.Error())
+		return
+	}
+	_, err = conn.Write([]byte(cpString))
+	if err != nil {
+		// If server crashes, we should get a timeout / broken pipe error
+		fmt.Println("Error sending checkpoint: ", err.Error())
+		return
+	}
+	fmt.Printf("[%s] Sent checkpoint [%s] to backup replica\n", time.Now().Format(time.RFC850), cpString)
+	incrChan <- true
+}
+
+func sendCheckpointsRoutine(checkpointFreq int, backupHostnames []string, cpCount *int, state *int, incrChan chan bool) {
+	for {
+		time.Sleep(time.Duration(checkpointFreq) * time.Second)
+		for _, hostname := range backupHostnames {
+			cpMessage := fmt.Sprintf("%d,%d", *cpCount, *state)
+			go sendCheckpoint(hostname, cpMessage, incrChan)
+			time.Sleep(time.Duration(checkpointFreq) * time.Second)
+		}
+	}
+}
+
 func listenerChannelWrapper(listener net.Listener, newClientChan chan net.Conn) {
 	for {
 		conn, err := listener.Accept()
@@ -68,6 +135,18 @@ func listenerChannelWrapper(listener net.Listener, newClientChan chan net.Conn) 
 			return
 		}
 		newClientChan <- conn
+	}
+}
+
+func primaryReplicaListenerWrapper(listener net.Listener, newPrimaryChan chan net.Conn) {
+	for {
+		conn, err := listener.Accept()
+		if err != nil {
+			// handle connection error
+			fmt.Println("Error accepting: ", err.Error())
+			return
+		}
+		newPrimaryChan <- conn
 	}
 }
 
@@ -110,11 +189,10 @@ func setState(my_state *int, val int) {
 	*my_state = val
 }
 
-
 func main() {
 	args := os.Args[1:]
 	if len(args) < 1 {
-		fmt.Printf("Usage: go run server/main.go <server id>")
+		fmt.Printf("Usage: go run server/main.go <server id> <checkpoint freq> <primary?> <backup replica hosts>")
 		return
 	}
 	serverId, err := strconv.Atoi(args[0])
@@ -122,8 +200,15 @@ func main() {
 		fmt.Println("Error parsing args: ", err.Error())
 		return
 	}
+	checkpointFreq, err := strconv.Atoi(args[1])
+	if err != nil {
+		fmt.Println("Error parsing args: ", err.Error())
+		return
+	}
+	isPrimary := (len(args) >= 3)
 
 	my_state := 0
+	my_checkpoint_count := 1
 	fmt.Printf("---------- Server %d started ----------\n", serverId)
 
 	// client IDs, monotonically increasing
@@ -138,12 +223,33 @@ func main() {
 	// make channel for new incrementing state
 	stateChan := make(chan int)
 
-	// start the server
+	// make channel for incrementing checkpoint count
+	incrementChan := make(chan bool)
+
+	// make channels for new primary replica messages
+	newPrimaryChan := make(chan net.Conn)
+	checkpointChan := make(chan Pair) // (checkpoint num, state)
+
+	// start the server to receive clients
 	listener, err := net.Listen(SERVER_TYPE, ":"+PORT)
 	if err != nil {
-		// handle server initialization error
-		fmt.Println("Error initializing: ", err.Error())
-		return
+		listener, err = net.Listen(SERVER_TYPE, ":"+PORT2)
+		if err != nil {
+			// handle server initialization error
+			fmt.Println("Error initializing: ", err.Error())
+			return
+		}
+	}
+
+	// listen for new primary replica if needed
+	primaryReplicaListener, err := net.Listen(SERVER_TYPE, ":"+SVR_PORT)
+	if err != nil {
+		primaryReplicaListener, err = net.Listen(SERVER_TYPE, ":"+SVR_PORT2)
+		if err != nil {
+			// handle server initialization error
+			fmt.Println("Error initializing: ", err.Error())
+			return
+		}
 	}
 
 	lfdConn := connectToLFD(serverId)
@@ -153,14 +259,19 @@ func main() {
 	}
 	go listenLFD(lfdConn)
 	go listenerChannelWrapper(listener, newClientChan)
+	go primaryReplicaListenerWrapper(primaryReplicaListener, newPrimaryChan)
+	if isPrimary {
+		backupHostnames := args[3:]
+		go sendCheckpointsRoutine(
+			checkpointFreq,
+			backupHostnames,
+			&my_checkpoint_count,
+			&my_state,
+			incrementChan)
+	}
 
 	defer listener.Close()
-
-	/**
-	1. spawn a listener thread
-	2. create a channel for new connections [between main thread and listener thread]
-	3. new select/case block in the main thread waits for new connections OR client death notifications
-	**/
+	defer primaryReplicaListener.Close()
 
 	for {
 		select {
@@ -170,6 +281,18 @@ func main() {
 			go handleClient(conn, clientID, serverId, stateChan)
 			clients[clientID] = conn
 			clientID++
+		case pair := <-checkpointChan:
+			if !isPrimary {
+				cpNum := pair.First
+				cpState := pair.Second
+				fmt.Printf("[%s] received checkpoint %d -> %d, state %d -> %d \n", time.Now().Format(time.RFC850), my_checkpoint_count, cpNum, my_state, cpState)
+				my_checkpoint_count = cpNum
+				my_state = cpState
+			}
+		case conn := <-newPrimaryChan:
+			go handlePrimary(conn, checkpointChan)
+		case <-incrementChan:
+			my_checkpoint_count++
 		}
 	}
 }

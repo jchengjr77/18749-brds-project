@@ -106,32 +106,31 @@ func main() {
 	servMap := map[net.Conn]int{}
 	msgChan := make(chan string)
 	repChan := make(chan bool)
-	for i, server := range args {
-		// connect to servers
-		// conn, err := net.Dial("tcp", "Nathans-Macbook-Pro-7.local:8080")
-		conn, err := net.Dial("tcp", server+":8080")
-		if err != nil {
-			// handle connection error
-			fmt.Println("Error dialing: ", err.Error())
-			return
-		}
-
-		buf := make([]byte, 1024)
-		mlen, err := conn.Read(buf)
-		if err != nil {
-			fmt.Println("Error reading: ", err.Error())
-			return
-		}
-		myID, err := strconv.Atoi(string(buf[:mlen]))
-		if err != nil {
-			fmt.Println("Error converting ID data:", err.Error())
-			return
-		}
-		fmt.Println("Received Client ID: ", myID)
-		connMap[conn] = myID
-		servMap[conn] = i + 1
-		go listenToServerRoutine(conn, myID, i+1, msgChan, repChan)
+	primaryReplica := args[0]
+	primaryReplicaId := 1
+	// connect to primary replica server
+	conn, err := net.Dial("tcp", primaryReplica+":8080")
+	if err != nil {
+		// handle connection error
+		fmt.Println("Error dialing: ", err.Error())
+		return
 	}
+
+	buf := make([]byte, 1024)
+	mlen, err := conn.Read(buf)
+	if err != nil {
+		fmt.Println("Error reading: ", err.Error())
+		return
+	}
+	myID, err := strconv.Atoi(string(buf[:mlen]))
+	if err != nil {
+		fmt.Println("Error converting ID data:", err.Error())
+		return
+	}
+	fmt.Println("Received Client ID: ", myID)
+	connMap[conn] = myID
+	servMap[conn] = primaryReplicaId
+	go listenToServerRoutine(conn, myID, primaryReplicaId, msgChan, repChan)
 	go processMsgs(msgChan, repChan)
 	manuallySendIDRoutine(connMap, servMap)
 }
