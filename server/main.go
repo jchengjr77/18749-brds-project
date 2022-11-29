@@ -17,6 +17,16 @@ const (
 	PORT2       = "9080"
 	SVR_PORT    = "8082"
 	SVR_PORT2   = "9082"
+
+	RESET = "\033[0m"
+
+    RED = "\033[31m"
+    GREEN = "\033[32m"
+    YELLOW = "\033[33m"
+    BLUE = "\033[34m"
+    PURPLE = "\033[35m"
+    CYAN = "\033[36m"
+    WHITE = "\033[37m"
 )
 
 type Pair struct {
@@ -31,7 +41,7 @@ func printMsg(clientID int, serverID int, msg string, msgType string) {
 	} else {
 		action = "Sent"
 	}
-	fmt.Printf("[%s] %s <%d, %d, %s, %s>\n", time.Now().Format(time.RFC850), action, clientID, serverID, msg, msgType)
+	fmt.Printf(BLUE + "[%s] %s <%d, %d, %s, %s>\n" + RESET, time.Now().Format(time.RFC850), action, clientID, serverID, msg, msgType)
 }
 
 func handleClient(conn net.Conn, clientID int, serverID int, stateChan chan int) {
@@ -111,7 +121,7 @@ func sendCheckpoint(host string, cpString string, incrChan chan bool) {
 		fmt.Println("Error sending checkpoint: ", err.Error())
 		return
 	}
-	fmt.Printf("[%s] Sent checkpoint [%s] to backup replica\n", time.Now().Format(time.RFC850), cpString)
+	fmt.Printf(GREEN + "[%s] Sent checkpoint [%s] to backup replica\n" + RESET, time.Now().Format(time.RFC850), cpString)
 	incrChan <- true
 }
 
@@ -285,7 +295,7 @@ func main() {
 			if !isPrimary {
 				cpNum := pair.First
 				cpState := pair.Second
-				fmt.Printf("[%s] received checkpoint %d -> %d, state %d -> %d \n", time.Now().Format(time.RFC850), my_checkpoint_count, cpNum, my_state, cpState)
+				fmt.Printf(GREEN + "[%s] received checkpoint %d -> %d, state %d -> %d \n" + RESET, time.Now().Format(time.RFC850), my_checkpoint_count, cpNum, my_state, cpState)
 				my_checkpoint_count = cpNum
 				my_state = cpState
 			}

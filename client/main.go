@@ -11,6 +11,18 @@ import (
 	"time"
 )
 
+const (
+	RESET = "\033[0m"
+
+    RED = "\033[31m"
+    GREEN = "\033[32m"
+    YELLOW = "\033[33m"
+    BLUE = "\033[34m"
+    PURPLE = "\033[35m"
+    CYAN = "\033[36m"
+    WHITE = "\033[37m"
+)
+
 /*
  * formats and prints important logging messages
  */
@@ -21,7 +33,7 @@ func printMsg(clientID int, serverID int, msg string, msgType string) {
 	} else {
 		action = "Received"
 	}
-	fmt.Printf("[%s] %s <%d, %d, %s, %s>\n", time.Now().Format(time.RFC850), action, clientID, serverID, msg, msgType)
+	fmt.Printf(BLUE + "[%s] %s <%d, %d, %s, %s>\n" + RESET, time.Now().Format(time.RFC850), action, clientID, serverID, msg, msgType)
 }
 
 /*
@@ -40,6 +52,7 @@ func sendMessageToServer(conn net.Conn, msg string, clientID int, serverID int) 
  */
 func manuallySendIDRoutine(connMap, servMap map[net.Conn]int, primaryConn net.Conn, passive bool) {
 	reqNum := 0
+	go automaticallySendIDRoutine(connMap, servMap, primaryConn, passive, &reqNum)
 	for {
 		fmt.Println("Press 'Enter' to send message to server...")
 		fmt.Scanln()
@@ -52,6 +65,23 @@ func manuallySendIDRoutine(connMap, servMap map[net.Conn]int, primaryConn net.Co
 		}
 		time.Sleep(2 * time.Second) //can send max once every 2 seconds
 		reqNum++
+	}
+}
+
+/*
+ * automatically send a message (your clientID) to the server
+ */
+ func automaticallySendIDRoutine(connMap, servMap map[net.Conn]int, primaryConn net.Conn, passive bool, reqNum *int) {
+	for {
+		for conn, clientId := range connMap {
+			if (passive && servMap[conn] != 1) {
+				continue
+			}
+			s := "requestnum:" + strconv.Itoa(*reqNum) + ",clientid:" + strconv.Itoa(clientId)
+			go sendMessageToServer(conn, s, clientId, servMap[conn])
+		}
+		time.Sleep(5 * time.Second) //can send max once every 5 seconds
+		*reqNum++
 	}
 }
 
