@@ -5,7 +5,6 @@ package main
 import (
 	"fmt"
 	"net"
-	"os/exec"
 	"strconv"
 	"strings"
 )
@@ -14,13 +13,6 @@ const (
 	SERVER_TYPE = "tcp"
 	PORT        = "8000"
 )
-
-// To test (Need to enable ssh and all too)
-var serverDestMap = map[int]string{
-	1: "M",
-	2: "CM",
-	3: "D",
-}
 
 type LFDUpdate struct {
 	serverID int
@@ -39,17 +31,12 @@ func listenerChannelWrapper(listener net.Listener, newLFDChan chan net.Conn) {
 	}
 }
 
-func relaunchDeadReplica(serverID int) {
-	dest := serverDestMap[serverID]
-	cmd := exec.Command("ssh " + dest + " go run server/main.go 1 10 0")
-	stdout, err := cmd.Output()
-
+func sendRelaunchToLFD(lfdID int, gfdConn net.Conn) {
+	_, err := gfdConn.Write([]byte("RELAUNCH:" + strconv.Itoa(lfdID)))
 	if err != nil {
-		fmt.Println(err.Error())
-		return
+		fmt.Println("Error sending message to server: ", err.Error())
 	}
-
-	fmt.Print(string(stdout))
+	fmt.Println("Relaunch sent!")
 }
 
 /*
@@ -85,7 +72,7 @@ func handleLFD(conn net.Conn, lfdID int, lfdUpdatesChan chan LFDUpdate) {
 }
 
 // parses LFD update and adds/removes server from list
-func handleUpdate(update LFDUpdate, servers *map[int]bool) {
+func handleUpdate(update LFDUpdate, servers *map[int]bool, lfds map[int]net.Conn) {
 	if update.action == "add" {
 		_, exists := (*servers)[update.serverID]
 		if exists {
@@ -100,9 +87,8 @@ func handleUpdate(update LFDUpdate, servers *map[int]bool) {
 			return
 		}
 		delete(*servers, update.serverID)
-		for len(*servers) < 1 {
-			relaunchDeadReplica(update.serverID)
-			// Delay ?
+		if len(*servers) < 3 {
+			sendRelaunchToLFD(update.serverID, lfds[update.serverID])
 		}
 	} else {
 		fmt.Println("----- GFD / RM has no idea what update that was -----")
@@ -158,7 +144,7 @@ func main() {
 	for {
 		select {
 		case update := <-lfdUpdatesChan:
-			handleUpdate(update, &servers)
+			handleUpdate(update, &servers, lfds)
 		case conn := <-newLFDChan:
 			go handleLFD(conn, lfdID, lfdUpdatesChan)
 			lfds[lfdID] = conn
