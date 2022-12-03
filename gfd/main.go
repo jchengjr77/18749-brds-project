@@ -5,18 +5,26 @@ package main
 import (
 	"fmt"
 	"net"
-	"strings"
+	"os/exec"
 	"strconv"
+	"strings"
 )
 
 const (
 	SERVER_TYPE = "tcp"
-	PORT = "8000"
+	PORT        = "8000"
 )
+
+// To test (Need to enable ssh and all too)
+var serverDestMap = map[int]string{
+	1: "M",
+	2: "CM",
+	3: "D",
+}
 
 type LFDUpdate struct {
 	serverID int
-	action string
+	action   string
 }
 
 func listenerChannelWrapper(listener net.Listener, newLFDChan chan net.Conn) {
@@ -31,13 +39,28 @@ func listenerChannelWrapper(listener net.Listener, newLFDChan chan net.Conn) {
 	}
 }
 
-/**
- NOTE: LFD messages are assumed to be of the form "[id],[action]"
- (no space in between, just a comma)
- [action] can be either "add" or "remove"
+func relaunchDeadReplica(serverID int) {
+	dest := serverDestMap[serverID]
+	cmd := exec.Command("ssh " + dest + " go run server/main.go 1 10 0")
+	stdout, err := cmd.Output()
+
+	if err != nil {
+		fmt.Println(err.Error())
+		return
+	}
+
+	fmt.Print(string(stdout))
+}
+
+/*
+*
+
+	NOTE: LFD messages are assumed to be of the form "[id],[action]"
+	(no space in between, just a comma)
+	[action] can be either "add" or "remove"
 */
 func handleLFD(conn net.Conn, lfdID int, lfdUpdatesChan chan LFDUpdate) {
-	fmt.Println("New LFD Connected! ID: ", lfdID);
+	fmt.Println("New LFD Connected! ID: ", lfdID)
 	_, err := conn.Write([]byte(strconv.Itoa(lfdID)))
 	if err != nil {
 		// handle write error
@@ -56,36 +79,40 @@ func handleLFD(conn net.Conn, lfdID int, lfdUpdatesChan chan LFDUpdate) {
 		if err != nil {
 			fmt.Println("Error converting to id: ", err.Error())
 		}
-		newUpdate := LFDUpdate{ id, parts[1] }
+		newUpdate := LFDUpdate{id, parts[1]}
 		lfdUpdatesChan <- newUpdate
 	}
 }
 
 // parses LFD update and adds/removes server from list
 func handleUpdate(update LFDUpdate, servers *map[int]bool) {
-	if (update.action == "add") {
+	if update.action == "add" {
 		_, exists := (*servers)[update.serverID]
-		if (exists) {
+		if exists {
 			fmt.Println("Cannot add, already registered: ", update.serverID)
 			return
 		}
 		(*servers)[update.serverID] = true
-	} else if (update.action == "remove") {
+	} else if update.action == "remove" {
 		_, exists := (*servers)[update.serverID]
-		if (!exists) {
+		if !exists {
 			fmt.Println("Cannot remove, isn't registered: ", update.serverID)
 			return
 		}
 		delete(*servers, update.serverID)
+		for len(*servers) < 1 {
+			relaunchDeadReplica(update.serverID)
+			// Delay ?
+		}
 	} else {
-		fmt.Println("----- GFD has no idea what update that was -----")
+		fmt.Println("----- GFD / RM has no idea what update that was -----")
 		fmt.Println(update)
 	}
 }
 
 func printGFDState(servers *map[int]bool) {
 	if len(*servers) == 0 {
-		fmt.Println("GFD: 0 members")
+		fmt.Println("GFD / RM: 0 members")
 	} else {
 		keys := make([]int, len(*servers))
 		i := 0
@@ -93,7 +120,7 @@ func printGFDState(servers *map[int]bool) {
 			keys[i] = k
 			i++
 		}
-		fmt.Println("GFD: ", len(*servers), "member(s): ", keys)
+		fmt.Println("GFD / RM: ", len(*servers), "member(s): ", keys)
 	}
 }
 
@@ -115,7 +142,7 @@ func main() {
 	// make channel for LFD update messages
 	lfdUpdatesChan := make(chan LFDUpdate)
 
-	// start the GFD
+	// start the GFD / RM
 	listener, err := net.Listen(SERVER_TYPE, ":"+PORT)
 	if err != nil {
 		// handle GFD initialization error

@@ -12,15 +12,14 @@ import (
 )
 
 const (
-	RESET = "\033[0m"
-
-    RED = "\033[31m"
-    GREEN = "\033[32m"
-    YELLOW = "\033[33m"
-    BLUE = "\033[34m"
-    PURPLE = "\033[35m"
-    CYAN = "\033[36m"
-    WHITE = "\033[37m"
+	RESET  = "\033[0m"
+	RED    = "\033[31m"
+	GREEN  = "\033[32m"
+	YELLOW = "\033[33m"
+	BLUE   = "\033[34m"
+	PURPLE = "\033[35m"
+	CYAN   = "\033[36m"
+	WHITE  = "\033[37m"
 )
 
 /*
@@ -33,7 +32,7 @@ func printMsg(clientID int, serverID int, msg string, msgType string) {
 	} else {
 		action = "Received"
 	}
-	fmt.Printf(BLUE + "[%s] %s <%d, %d, %s, %s>\n" + RESET, time.Now().Format(time.RFC850), action, clientID, serverID, msg, msgType)
+	fmt.Printf(BLUE+"[%s] %s <%d, %d, %s, %s>\n"+RESET, time.Now().Format(time.RFC850), action, clientID, serverID, msg, msgType)
 }
 
 /*
@@ -57,7 +56,7 @@ func manuallySendIDRoutine(connMap, servMap map[net.Conn]int, primaryConn net.Co
 		fmt.Println("Press 'Enter' to send message to server...")
 		fmt.Scanln()
 		for conn, clientId := range connMap {
-			if (passive && servMap[conn] != 1) {
+			if passive && servMap[conn] != 1 {
 				continue
 			}
 			s := "requestnum:" + strconv.Itoa(reqNum) + ",clientid:" + strconv.Itoa(clientId)
@@ -71,10 +70,10 @@ func manuallySendIDRoutine(connMap, servMap map[net.Conn]int, primaryConn net.Co
 /*
  * automatically send a message (your clientID) to the server
  */
- func automaticallySendIDRoutine(connMap, servMap map[net.Conn]int, primaryConn net.Conn, passive bool, reqNum *int) {
+func automaticallySendIDRoutine(connMap, servMap map[net.Conn]int, primaryConn net.Conn, passive bool, reqNum *int) {
 	for {
 		for conn, clientId := range connMap {
-			if (passive && servMap[conn] != 1) {
+			if passive && servMap[conn] != 1 {
 				continue
 			}
 			s := "requestnum:" + strconv.Itoa(*reqNum) + ",clientid:" + strconv.Itoa(clientId)
@@ -148,7 +147,7 @@ func main() {
 			fmt.Println("Error dialing: ", err.Error())
 			return
 		}
-	
+
 		buf := make([]byte, 1024)
 		mlen, err := conn.Read(buf)
 		if err != nil {
@@ -164,7 +163,7 @@ func main() {
 		connMap[conn] = myID
 		servMap[conn] = i + 1
 		go listenToServerRoutine(conn, myID, i+1, msgChan, repChan)
-		if (i == 0) {
+		if i == 0 {
 			primaryConn = conn
 		}
 	}
