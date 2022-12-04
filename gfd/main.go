@@ -111,8 +111,12 @@ func handleUpdate(update LFDUpdate, servers *map[int]bool, lfds map[int]net.Conn
 		// Tolerate the primary failing once
 		// Can be extended to more than one but for the project purposes we only tolerate one
 		if mode == "passive" && *primary == update.serverID {
-
-			*primary += 1
+			key := -1
+			for k, _ := range *servers {
+				key = k
+				break
+			}
+			*primary = key
 			sendElectionToLFD(primary, lfds[*primary])
 		}
 	} else {

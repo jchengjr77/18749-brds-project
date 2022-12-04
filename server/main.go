@@ -44,6 +44,14 @@ func printMsg(clientID int, serverID int, msg string, msgType string) {
 	fmt.Printf(BLUE+"[%s] %s <%d, %d, %s, %s>\n"+RESET, time.Now().Format(time.RFC850), action, clientID, serverID, msg, msgType)
 }
 
+func sendElectedToClient(clientConn net.Conn, serverID int) {
+	_, err := clientConn.Write([]byte("ELECTED:" + strconv.Itoa(serverID)))
+	if err != nil {
+		// handle write error
+		fmt.Println("Error sending elected: ", err.Error())
+	}
+}
+
 func handleClient(conn net.Conn, clientID int, serverID int, stateChan chan int) {
 	fmt.Println("New Client Connected! ID: ", clientID)
 	_, err := conn.Write([]byte(strconv.Itoa(clientID)))
@@ -304,6 +312,7 @@ func main() {
 			go handleClient(conn, clientID, serverId, stateChan)
 			clients[clientID] = conn
 			clientID++
+			go sendElectedToClient(conn, serverId)
 		case pair := <-checkpointChan:
 			if isPrimary == 0 {
 				cpNum := pair.First
@@ -329,6 +338,9 @@ func main() {
 				&my_checkpoint_count,
 				&my_state,
 				incrementChan)
+			for _, v := range clients {
+				go sendElectedToClient(v, serverId)
+			}
 		}
 	}
 }
