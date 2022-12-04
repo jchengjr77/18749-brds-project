@@ -103,7 +103,7 @@ func listenToServerRoutine(conn net.Conn, myID int, serverID int, msgChan chan s
 	}
 }
 
-func processMsgs(msgChan chan string, repChan chan bool) {
+func processMsgs(msgChan chan string, repChan chan bool, reassignPrimChan chan int) {
 	resSet := make(map[int]struct{})
 	for {
 		msg := <-msgChan //block until message is received
@@ -112,6 +112,16 @@ func processMsgs(msgChan chan string, repChan chan bool) {
 		reqNum, _ := strconv.Atoi(req)
 		idInd := strings.Index(msg, "serverid:")
 		id := msg[idInd+len("serverid:"):]
+		electedInd := strings.Index(msg, "ELECTED:")
+		// a new elected server id exists
+		if electedInd > -1 {
+			newPrimaryId, err := strconv.Atoi(msg[electedInd+len("ELECTED:"):])
+			if err != nil {
+				fmt.Println(err)
+			}
+			reassignPrimChan <- newPrimaryId
+		}
+
 		_, exists := resSet[reqNum]
 		dup := false
 		if exists { //if duplicate
@@ -121,6 +131,15 @@ func processMsgs(msgChan chan string, repChan chan bool) {
 			resSet[reqNum] = struct{}{}
 		}
 		repChan <- dup
+	}
+}
+
+func reassignPrimary(reassignPrimChan chan int, primaryConn *net.Conn, idToConnMap map[int]net.Conn) {
+	for {
+		select {
+		case newPrimary := <-reassignPrimChan:
+			*primaryConn = idToConnMap[newPrimary]
+		}
 	}
 }
 
@@ -136,8 +155,10 @@ func main() {
 
 	connMap := map[net.Conn]int{}
 	servMap := map[net.Conn]int{}
+	idToConnMap := map[int]net.Conn{}
 	msgChan := make(chan string)
 	repChan := make(chan bool)
+	reassignPrimChan := make(chan int)
 	var primaryConn net.Conn
 	for i, server := range args {
 		// connect to primary replica server
@@ -162,11 +183,16 @@ func main() {
 		fmt.Println("Received Client ID: ", myID)
 		connMap[conn] = myID
 		servMap[conn] = i + 1
+		idToConnMap[i+1] = conn
+
 		go listenToServerRoutine(conn, myID, i+1, msgChan, repChan)
-		if i == 0 {
-			primaryConn = conn
-		}
+		// if i == 0 {
+		// 	primaryConn = conn
+		// }
+		go reassignPrimary(reassignPrimChan, &primaryConn, idToConnMap)
 	}
-	go processMsgs(msgChan, repChan)
+
+	go processMsgs(msgChan, repChan, reassignPrimChan)
 	manuallySendIDRoutine(connMap, servMap, primaryConn, true)
+
 }
