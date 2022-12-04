@@ -170,7 +170,7 @@ func connectToLFD(serverId int, isPrimary int) (conn net.Conn) {
 	}
 
 	fmt.Println("LFD1 Connected!")
-	_, err = conn.Write([]byte(strconv.Itoa(serverId) + strconv.Itoa(isPrimary)))
+	_, err = conn.Write([]byte(strconv.Itoa(serverId) + ":" + strconv.Itoa(isPrimary)))
 	if err != nil {
 		// handle write error
 		fmt.Println("Error sending ID: ", err.Error())

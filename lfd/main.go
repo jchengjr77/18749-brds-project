@@ -202,6 +202,7 @@ func main() {
 				return
 			}
 			serverMsg := string(buf[:mlen])
+			fmt.Println("SERVERMSG: " + serverMsg)
 			serverID, err := strconv.Atoi(strings.Split(serverMsg, ":")[0])
 			isPrimary, err := strconv.ParseBool(strings.Split(serverMsg, ":")[1])
 			if err != nil {
