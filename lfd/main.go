@@ -49,7 +49,7 @@ func sendReelectionToServer(conn net.Conn) error {
 /*
  * sendHeartbeatsRoutine is a routine that sends a heartbeat to server every heartbeatFreq seconds
  */
-func sendHeartbeatsRoutine(conn net.Conn, heartbeatFreq int, myId int, gfdConn net.Conn) {
+func sendHeartbeatsRoutine(conn net.Conn, heartbeatFreq int, myId int, gfdConn net.Conn, isPrimary bool) {
 	first := true
 	for {
 		err := sendHeartbeatToServer(conn, "LFD"+strconv.Itoa(myId)+" heartbeat")
@@ -64,7 +64,11 @@ func sendHeartbeatsRoutine(conn net.Conn, heartbeatFreq int, myId int, gfdConn n
 			return
 		}
 		if first {
-			_, err := gfdConn.Write([]byte(strconv.Itoa(myId) + ",add"))
+			if isPrimary {
+				_, err = gfdConn.Write([]byte(strconv.Itoa(myId) + ",add_primary"))
+			} else {
+				_, err = gfdConn.Write([]byte(strconv.Itoa(myId) + ",add"))
+			}
 			if err != nil {
 				fmt.Printf("GFD has crashed!\n", time.Now().Format(time.RFC850))
 				return
@@ -90,6 +94,9 @@ func listenToServerRoutine(conn net.Conn) {
 	}
 }
 
+/*
+ * server message protocol is <serverID>:<isPrimary>
+ */
 func listenForServers(listener net.Listener, serverChan chan net.Conn) {
 	for {
 		serverConn, err := listener.Accept()
@@ -194,14 +201,16 @@ func main() {
 				fmt.Println("Error reading: ", err.Error())
 				return
 			}
-			serverID, err := strconv.Atoi(string(buf[:mlen]))
+			serverMsg := string(buf[:mlen])
+			serverID, err := strconv.Atoi(strings.Split(serverMsg, ":")[0])
+			isPrimary, err := strconv.ParseBool(strings.Split(serverMsg, ":")[1])
 			if err != nil {
 				fmt.Println("Error converting ID data:", err.Error())
 				return
 			}
 			fmt.Println("Received ID from server: ", serverID)
 
-			go sendHeartbeatsRoutine(conn, heartbeatFreq, serverID, gfdConn)
+			go sendHeartbeatsRoutine(conn, heartbeatFreq, serverID, gfdConn, isPrimary)
 			go listenToServerRoutine(conn)
 			go listenForGFDCommands(gfdConn, conn)
 		}

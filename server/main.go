@@ -160,7 +160,7 @@ func primaryReplicaListenerWrapper(listener net.Listener, newPrimaryChan chan ne
 	}
 }
 
-func connectToLFD(serverId int) (conn net.Conn) {
+func connectToLFD(serverId int, isPrimary int) (conn net.Conn) {
 	// First connect to LFD
 	conn, err := net.Dial("tcp", ":8081")
 	if err != nil {
@@ -170,7 +170,7 @@ func connectToLFD(serverId int) (conn net.Conn) {
 	}
 
 	fmt.Println("LFD1 Connected!")
-	_, err = conn.Write([]byte(strconv.Itoa(serverId)))
+	_, err = conn.Write([]byte(strconv.Itoa(serverId) + strconv.Itoa(isPrimary)))
 	if err != nil {
 		// handle write error
 		fmt.Println("Error sending ID: ", err.Error())
@@ -221,7 +221,7 @@ func main() {
 		fmt.Println("Error parsing args: ", err.Error())
 		return
 	}
-	isPrimary, err := strconv.ParseBool(args[2])
+	isPrimary, err := strconv.Atoi(args[2])
 	if err != nil {
 		fmt.Println("Error parsing args: ", err.Error())
 		return
@@ -276,7 +276,7 @@ func main() {
 		}
 	}
 
-	lfdConn := connectToLFD(serverId)
+	lfdConn := connectToLFD(serverId, isPrimary)
 	if lfdConn == nil {
 		fmt.Println("Could not connect to LFD")
 		return
@@ -284,7 +284,7 @@ func main() {
 	go listenLFD(lfdConn, electedPrimaryChan)
 	go listenerChannelWrapper(listener, newClientChan)
 	go primaryReplicaListenerWrapper(primaryReplicaListener, newPrimaryChan)
-	if isPrimary {
+	if isPrimary == 1 {
 		go sendCheckpointsRoutine(
 			checkpointFreq,
 			backupHostnames,
@@ -305,7 +305,7 @@ func main() {
 			clients[clientID] = conn
 			clientID++
 		case pair := <-checkpointChan:
-			if !isPrimary {
+			if isPrimary == 0 {
 				cpNum := pair.First
 				cpState := pair.Second
 				fmt.Printf(GREEN+"[%s] received checkpoint %d -> %d, state %d -> %d \n"+RESET, time.Now().Format(time.RFC850), my_checkpoint_count, cpNum, my_state, cpState)
@@ -322,7 +322,7 @@ func main() {
 			my_checkpoint_count++
 		case <-electedPrimaryChan:
 			fmt.Println("MADE MYSELF A PRIMARY")
-			isPrimary = true
+			isPrimary = 1
 			go sendCheckpointsRoutine(
 				checkpointFreq,
 				backupHostnames,

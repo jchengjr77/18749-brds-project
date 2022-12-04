@@ -26,7 +26,7 @@ Run LFD with:
 
 Run server with:
 
-`go run server/main.go <server id> <checkpoint freq> <primary?> <backup replica hosts>`
+`go run server/main.go <server id> <checkpoint freq> <isPrimary> <backup replica hosts>`
 
 You may add a number as a CLI argument that will set a custom heartbeat_freq
 

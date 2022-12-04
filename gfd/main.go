@@ -40,8 +40,8 @@ func sendRelaunchToLFD(serverID int, gfdConn net.Conn) {
 	fmt.Println("Relaunch sent!")
 }
 
-func sendElectionToLFD(serverID int, gfdConn net.Conn) {
-	_, err := gfdConn.Write([]byte("ELECTED:" + strconv.Itoa(serverID)))
+func sendElectionToLFD(serverID *int, gfdConn net.Conn) {
+	_, err := gfdConn.Write([]byte("ELECTED:" + strconv.Itoa(*serverID)))
 	if err != nil {
 		fmt.Println("Error sending message to server: ", err.Error())
 	}
@@ -53,7 +53,7 @@ func sendElectionToLFD(serverID int, gfdConn net.Conn) {
 
 	NOTE: LFD messages are assumed to be of the form "[id],[action]"
 	(no space in between, just a comma)
-	[action] can be either "add" or "remove"
+	[action] can be either 'add_primary', "add" or "remove"
 */
 func handleLFD(conn net.Conn, lfdID int, lfdUpdatesChan chan LFDUpdate) {
 	fmt.Println("New LFD Connected! ID: ", lfdID)
@@ -81,7 +81,7 @@ func handleLFD(conn net.Conn, lfdID int, lfdUpdatesChan chan LFDUpdate) {
 }
 
 // parses LFD update and adds/removes server from list
-func handleUpdate(update LFDUpdate, servers *map[int]bool, lfds map[int]net.Conn, mode string, primary int) {
+func handleUpdate(update LFDUpdate, servers *map[int]bool, lfds map[int]net.Conn, mode string, primary *int) {
 	if update.action == "add" {
 		_, exists := (*servers)[update.serverID]
 		if exists {
@@ -89,6 +89,15 @@ func handleUpdate(update LFDUpdate, servers *map[int]bool, lfds map[int]net.Conn
 			return
 		}
 		(*servers)[update.serverID] = true
+	} else if update.action == "add_primary" {
+		_, exists := (*servers)[update.serverID]
+		if exists {
+			fmt.Println("Cannot add, already registered: ", update.serverID)
+			return
+		}
+		(*servers)[update.serverID] = true
+		*primary = update.serverID
+		fmt.Println("SET PRIMARY TO SERVER " + strconv.Itoa(*primary))
 	} else if update.action == "remove" {
 		_, exists := (*servers)[update.serverID]
 		if !exists {
@@ -101,9 +110,10 @@ func handleUpdate(update LFDUpdate, servers *map[int]bool, lfds map[int]net.Conn
 		}
 		// Tolerate the primary failing once
 		// Can be extended to more than one but for the project purposes we only tolerate one
-		if mode == "passive" && primary == update.serverID {
-			primary += 1
-			sendElectionToLFD(primary, lfds[primary])
+		if mode == "passive" && *primary == update.serverID {
+
+			*primary += 1
+			sendElectionToLFD(primary, lfds[*primary])
 		}
 	} else {
 		fmt.Println("----- GFD / RM has no idea what update that was -----")
@@ -138,8 +148,8 @@ func main() {
 	// lfd IDs, monotonically increasing
 	lfdID := 1
 
-	// Start Server 1 to be primary
-	primary := 1
+	// No primary yet
+	primary := -1
 
 	// map of LFDs [lfd id] -> [net connection]
 	lfds := map[int]net.Conn{}
@@ -169,7 +179,7 @@ func main() {
 	for {
 		select {
 		case update := <-lfdUpdatesChan:
-			handleUpdate(update, &servers, lfds, mode, primary)
+			handleUpdate(update, &servers, lfds, mode, &primary)
 		case conn := <-newLFDChan:
 			go handleLFD(conn, lfdID, lfdUpdatesChan)
 			lfds[lfdID] = conn
