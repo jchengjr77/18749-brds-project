@@ -33,6 +33,20 @@ func sendHeartbeatToServer(conn net.Conn, myName string) error {
 }
 
 /*
+ * sendReelectionToServer sends a reelect message to the server
+ */
+func sendReelectionToServer(conn net.Conn) error {
+	_, err := conn.Write([]byte("ELECTED"))
+	if err != nil {
+		// If server crashes, we should get a timeout / broken pipe error
+		fmt.Println("Error sending heartbeat: ", err.Error())
+		return err
+	}
+	fmt.Printf("[%s] Sent heartbeat to server\n", time.Now().Format(time.RFC850))
+	return nil
+}
+
+/*
  * sendHeartbeatsRoutine is a routine that sends a heartbeat to server every heartbeatFreq seconds
  */
 func sendHeartbeatsRoutine(conn net.Conn, heartbeatFreq int, myId int, gfdConn net.Conn) {
@@ -90,8 +104,9 @@ func listenForServers(listener net.Listener, serverChan chan net.Conn) {
 
 /*
  * Protocol for relaunch messages are assumed to be RELAUNCH:<serverID>
- */
-func listenForRelaunch(gfdConn net.Conn) {
+* Protocol for reelection messages are assumed to be ELECTED:<serverID>
+*/
+func listenForGFDCommands(gfdConn net.Conn, serverConn net.Conn) {
 	for {
 		buf := make([]byte, 1024)
 		mlen, err := gfdConn.Read(buf)
@@ -100,15 +115,21 @@ func listenForRelaunch(gfdConn net.Conn) {
 			return
 		}
 		fmt.Printf("[%s] Received %s from GFD\n", time.Now().Format(time.RFC850), string(buf[:mlen]))
+		gfdCommand := strings.Split(string(buf[:mlen]), ":")[0]
 		serverIdStr := strings.Split(string(buf[:mlen]), ":")[1]
-		cmd := exec.Command("go", "run", "server/main.go", serverIdStr, "10", "0")
-		stdout, err := cmd.Output()
-		if err != nil {
-			fmt.Println(err.Error())
-			return
+
+		if gfdCommand == "RELAUNCH" {
+			cmd := exec.Command("go", "run", "server/main.go", serverIdStr, "10", "0")
+			stdout, err := cmd.Output()
+			if err != nil {
+				fmt.Println(err.Error())
+				return
+			}
+			fmt.Print(string(stdout))
+		} else if gfdCommand == "ELECTED" {
+			sendReelectionToServer(serverConn)
 		}
 
-		fmt.Print(string(stdout))
 		fmt.Printf("[%s] Received %s from GFD\n", time.Now().Format(time.RFC850), string(buf[:mlen]))
 
 	}
@@ -164,7 +185,6 @@ func main() {
 
 	newServerChan := make(chan net.Conn)
 	go listenForServers(listener, newServerChan)
-	go listenForRelaunch(gfdConn)
 	for {
 		select {
 		case conn := <-newServerChan:
@@ -183,6 +203,7 @@ func main() {
 
 			go sendHeartbeatsRoutine(conn, heartbeatFreq, serverID, gfdConn)
 			go listenToServerRoutine(conn)
+			go listenForGFDCommands(gfdConn, conn)
 		}
 	}
 }
