@@ -6,13 +6,16 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"os/exec"
 	"strconv"
+	"strings"
 	"time"
 )
 
 const (
-	SERVER_TYPE = "tcp"
-	PORT        = "8081"
+	SERVER_TYPE    = "tcp"
+	PORT           = "8081"
+	SERVER_RUN_CMD = "server/main.go"
 )
 
 /*
@@ -85,6 +88,32 @@ func listenForServers(listener net.Listener, serverChan chan net.Conn) {
 	}
 }
 
+/*
+ * Protocol for relaunch messages are assumed to be RELAUNCH:<serverID>
+ */
+func listenForRelaunch(gfdConn net.Conn) {
+	for {
+		buf := make([]byte, 1024)
+		mlen, err := gfdConn.Read(buf)
+		if err != nil {
+			fmt.Println("Error reading: ", err.Error())
+			return
+		}
+		fmt.Printf("[%s] Received %s from GFD\n", time.Now().Format(time.RFC850), string(buf[:mlen]))
+		serverIdStr := strings.Split(string(buf[:mlen]), ":")[1]
+		cmd := exec.Command("go", "run", "server/main.go", serverIdStr, "10", "0")
+		stdout, err := cmd.Output()
+		if err != nil {
+			fmt.Println(err.Error())
+			return
+		}
+
+		fmt.Print(string(stdout))
+		fmt.Printf("[%s] Received %s from GFD\n", time.Now().Format(time.RFC850), string(buf[:mlen]))
+
+	}
+}
+
 func main() {
 	fmt.Println("---------- Local Fault Detector Started ----------")
 	var err error
@@ -135,6 +164,7 @@ func main() {
 
 	newServerChan := make(chan net.Conn)
 	go listenForServers(listener, newServerChan)
+	go listenForRelaunch(gfdConn)
 	for {
 		select {
 		case conn := <-newServerChan:
