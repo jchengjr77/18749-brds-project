@@ -18,7 +18,7 @@ First, in the root directory,
 
 Run GFD with:
 
-`go run gfd/main.go <1 if active 0 if passive>`
+`go run gfd/main.go <'active' or 'passive'>`
 
 Run LFD with:
 
