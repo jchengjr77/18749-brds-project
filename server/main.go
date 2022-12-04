@@ -178,7 +178,7 @@ func connectToLFD(serverId int) (conn net.Conn) {
 	return conn
 }
 
-func listenLFD(conn net.Conn) {
+func listenLFD(conn net.Conn, electedPrimaryChan chan string) {
 	for {
 		// Receive heartbeat from LFD
 		buf := make([]byte, 1024)
@@ -189,7 +189,11 @@ func listenLFD(conn net.Conn) {
 		}
 		fmt.Printf("[%s] Received %s\n", time.Now().Format(time.RFC850), string(buf[:mlen]))
 		// Send reply to LFD
-		_, err = conn.Write([]byte("Heartbeat Ack"))
+
+		if string(buf[:mlen]) == "ELECTED" {
+			electedPrimaryChan <- "ELECTED"
+		}
+		_, err = conn.Write([]byte("Ack"))
 		fmt.Printf("[%s] Replied to LFD with ack\n", time.Now().Format(time.RFC850))
 	}
 }
@@ -200,6 +204,8 @@ func setState(my_state *int, val int) {
 }
 
 func main() {
+	i_am_ready := 0
+	fmt.Println("i_am_ready: " + strconv.Itoa(i_am_ready))
 	args := os.Args[1:]
 	if len(args) < 1 {
 		fmt.Printf("Usage: go run server/main.go <server id> <checkpoint freq> <primary?> <backup replica hosts>")
@@ -245,6 +251,9 @@ func main() {
 	newPrimaryChan := make(chan net.Conn)
 	checkpointChan := make(chan Pair) // (checkpoint num, state)
 
+	// make channels for new primary replica messages
+	electedPrimaryChan := make(chan string)
+
 	// start the server to receive clients
 	listener, err := net.Listen(SERVER_TYPE, ":"+PORT)
 	if err != nil {
@@ -272,7 +281,7 @@ func main() {
 		fmt.Println("Could not connect to LFD")
 		return
 	}
-	go listenLFD(lfdConn)
+	go listenLFD(lfdConn, electedPrimaryChan)
 	go listenerChannelWrapper(listener, newClientChan)
 	go primaryReplicaListenerWrapper(primaryReplicaListener, newPrimaryChan)
 	if isPrimary {
@@ -302,11 +311,24 @@ func main() {
 				fmt.Printf(GREEN+"[%s] received checkpoint %d -> %d, state %d -> %d \n"+RESET, time.Now().Format(time.RFC850), my_checkpoint_count, cpNum, my_state, cpState)
 				my_checkpoint_count = cpNum
 				my_state = cpState
+				if i_am_ready == 0 {
+					i_am_ready = 1
+					fmt.Println("i_am_ready: " + strconv.Itoa(i_am_ready))
+				}
 			}
 		case conn := <-newPrimaryChan:
 			go handlePrimary(conn, checkpointChan)
 		case <-incrementChan:
 			my_checkpoint_count++
+		case <-electedPrimaryChan:
+			fmt.Println("MADE MYSELF A PRIMARY")
+			isPrimary = true
+			go sendCheckpointsRoutine(
+				checkpointFreq,
+				backupHostnames,
+				&my_checkpoint_count,
+				&my_state,
+				incrementChan)
 		}
 	}
 }

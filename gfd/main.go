@@ -5,6 +5,7 @@ package main
 import (
 	"fmt"
 	"net"
+	"os"
 	"strconv"
 	"strings"
 )
@@ -31,12 +32,20 @@ func listenerChannelWrapper(listener net.Listener, newLFDChan chan net.Conn) {
 	}
 }
 
-func sendRelaunchToLFD(lfdID int, gfdConn net.Conn) {
-	_, err := gfdConn.Write([]byte("RELAUNCH:" + strconv.Itoa(lfdID)))
+func sendRelaunchToLFD(serverID int, gfdConn net.Conn) {
+	_, err := gfdConn.Write([]byte("RELAUNCH:" + strconv.Itoa(serverID)))
 	if err != nil {
 		fmt.Println("Error sending message to server: ", err.Error())
 	}
 	fmt.Println("Relaunch sent!")
+}
+
+func sendElectionToLFD(serverID int, gfdConn net.Conn) {
+	_, err := gfdConn.Write([]byte("ELECTED:" + strconv.Itoa(serverID)))
+	if err != nil {
+		fmt.Println("Error sending message to server: ", err.Error())
+	}
+	fmt.Println("Reelection sent!")
 }
 
 /*
@@ -72,7 +81,7 @@ func handleLFD(conn net.Conn, lfdID int, lfdUpdatesChan chan LFDUpdate) {
 }
 
 // parses LFD update and adds/removes server from list
-func handleUpdate(update LFDUpdate, servers *map[int]bool, lfds map[int]net.Conn) {
+func handleUpdate(update LFDUpdate, servers *map[int]bool, lfds map[int]net.Conn, mode string, primary int) {
 	if update.action == "add" {
 		_, exists := (*servers)[update.serverID]
 		if exists {
@@ -89,6 +98,12 @@ func handleUpdate(update LFDUpdate, servers *map[int]bool, lfds map[int]net.Conn
 		delete(*servers, update.serverID)
 		if len(*servers) < 3 {
 			sendRelaunchToLFD(update.serverID, lfds[update.serverID])
+		}
+		// Tolerate the primary failing once
+		// Can be extended to more than one but for the project purposes we only tolerate one
+		if mode == "passive" && primary == update.serverID {
+			primary += 1
+			sendElectionToLFD(primary, lfds[primary])
 		}
 	} else {
 		fmt.Println("----- GFD / RM has no idea what update that was -----")
@@ -113,8 +128,18 @@ func printGFDState(servers *map[int]bool) {
 func main() {
 	fmt.Println("---------- Global Fault Detector started ----------")
 
+	args := os.Args[1:]
+	if len(args) < 1 {
+		fmt.Printf("go run gfd/main.go <mode: 'active' or 'passive'>")
+		return
+	}
+	mode := args[0]
+
 	// lfd IDs, monotonically increasing
 	lfdID := 1
+
+	// Start Server 1 to be primary
+	primary := 1
 
 	// map of LFDs [lfd id] -> [net connection]
 	lfds := map[int]net.Conn{}
@@ -144,7 +169,7 @@ func main() {
 	for {
 		select {
 		case update := <-lfdUpdatesChan:
-			handleUpdate(update, &servers, lfds)
+			handleUpdate(update, &servers, lfds, mode, primary)
 		case conn := <-newLFDChan:
 			go handleLFD(conn, lfdID, lfdUpdatesChan)
 			lfds[lfdID] = conn
