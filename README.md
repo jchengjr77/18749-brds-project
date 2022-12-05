@@ -32,5 +32,5 @@ You may add a number as a CLI argument that will set a custom heartbeat_freq
 
 Finally, run clients with: 
 
-`go run client/main.go <host name 1> <host name 2> <host name 3>`
+`go run client/main.go <'active' or 'passive'> <host name 1> <host name 2> <host name 3>`
 
