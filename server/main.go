@@ -50,6 +50,7 @@ func sendElectedToClient(clientConn net.Conn, serverID int) {
 		// handle write error
 		fmt.Println("Error sending elected: ", err.Error())
 	}
+	fmt.Println("SENT ELECTED")
 }
 
 func handleClient(conn net.Conn, clientID int, serverID int, stateChan chan int, isPrimary int, serverId int) {
@@ -58,6 +59,9 @@ func handleClient(conn net.Conn, clientID int, serverID int, stateChan chan int,
 	if err != nil {
 		// handle write error
 		fmt.Println("Error sending ID: ", err.Error())
+	}
+	if isPrimary == 1 {
+		go sendElectedToClient(conn, serverId)
 	}
 	for {
 		buf := make([]byte, 1024)
@@ -82,9 +86,6 @@ func handleClient(conn net.Conn, clientID int, serverID int, stateChan chan int,
 			fmt.Println("Error sending ack: ", err.Error())
 		}
 		printMsg(clientID, serverID, ackMsg, "reply")
-	}
-	if isPrimary == 1 {
-		go sendElectedToClient(conn, serverId)
 	}
 }
 
