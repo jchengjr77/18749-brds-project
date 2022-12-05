@@ -52,7 +52,7 @@ func sendElectedToClient(clientConn net.Conn, serverID int) {
 	}
 }
 
-func handleClient(conn net.Conn, clientID int, serverID int, stateChan chan int) {
+func handleClient(conn net.Conn, clientID int, serverID int, stateChan chan int, isPrimary int, serverId int) {
 	fmt.Println("New Client Connected! ID: ", clientID)
 	_, err := conn.Write([]byte(strconv.Itoa(clientID)))
 	if err != nil {
@@ -82,6 +82,9 @@ func handleClient(conn net.Conn, clientID int, serverID int, stateChan chan int)
 			fmt.Println("Error sending ack: ", err.Error())
 		}
 		printMsg(clientID, serverID, ackMsg, "reply")
+	}
+	if isPrimary == 1 {
+		go sendElectedToClient(conn, serverId)
 	}
 }
 
@@ -309,10 +312,9 @@ func main() {
 		case recentID := <-stateChan:
 			setState(&my_state, recentID)
 		case conn := <-newClientChan:
-			go handleClient(conn, clientID, serverId, stateChan)
+			go handleClient(conn, clientID, serverId, stateChan, isPrimary, serverId)
 			clients[clientID] = conn
 			clientID++
-			go sendElectedToClient(conn, serverId)
 		case pair := <-checkpointChan:
 			if isPrimary == 0 {
 				cpNum := pair.First
