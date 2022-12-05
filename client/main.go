@@ -49,14 +49,16 @@ func sendMessageToServer(conn net.Conn, msg string, clientID int, serverID int) 
 /*
  * manually send a message (your clientID) to the server
  */
-func manuallySendIDRoutine(connMap, servMap map[net.Conn]int, primaryConn net.Conn, passive bool) {
+func manuallySendIDRoutine(connMap, servMap map[net.Conn]int, primaryConn *net.Conn, passive bool) {
 	reqNum := 0
 	go automaticallySendIDRoutine(connMap, servMap, primaryConn, passive, &reqNum)
 	for {
 		fmt.Println("Press 'Enter' to send message to server...")
 		fmt.Scanln()
 		for conn, clientId := range connMap {
-			if passive && servMap[conn] != 1 {
+			fmt.Println("CURR CONN: " + strconv.Itoa(servMap[conn]))
+			fmt.Println("PRIM CONN: " + strconv.Itoa(servMap[*primaryConn]))
+			if passive && servMap[conn] != servMap[*primaryConn] {
 				continue
 			}
 			s := "requestnum:" + strconv.Itoa(reqNum) + ",clientid:" + strconv.Itoa(clientId)
@@ -70,10 +72,10 @@ func manuallySendIDRoutine(connMap, servMap map[net.Conn]int, primaryConn net.Co
 /*
  * automatically send a message (your clientID) to the server
  */
-func automaticallySendIDRoutine(connMap, servMap map[net.Conn]int, primaryConn net.Conn, passive bool, reqNum *int) {
+func automaticallySendIDRoutine(connMap, servMap map[net.Conn]int, primaryConn *net.Conn, passive bool, reqNum *int) {
 	for {
 		for conn, clientId := range connMap {
-			if passive && servMap[conn] != 1 {
+			if passive && conn != *primaryConn {
 				continue
 			}
 			s := "requestnum:" + strconv.Itoa(*reqNum) + ",clientid:" + strconv.Itoa(clientId)
@@ -103,24 +105,43 @@ func listenToServerRoutine(conn net.Conn, myID int, serverID int, msgChan chan s
 	}
 }
 
-func processMsgs(msgChan chan string, repChan chan bool) {
+func processMsgs(msgChan chan string, repChan chan bool, reassignPrimChan chan int) {
 	resSet := make(map[int]struct{})
 	for {
 		msg := <-msgChan //block until message is received
-		endInd := strings.Index(msg, ",")
-		req := msg[len("requestnum:"):endInd]
-		reqNum, _ := strconv.Atoi(req)
-		idInd := strings.Index(msg, "serverid:")
-		id := msg[idInd+len("serverid:"):]
-		_, exists := resSet[reqNum]
-		dup := false
-		if exists { //if duplicate
-			fmt.Println("request_num " + req + ": Discarded duplicate reply from S" + id)
-			dup = true
+		electedInd := strings.Index(msg, "ELECTED:")
+		// a new elected server id exists
+		if electedInd > -1 {
+			newPrimaryId, err := strconv.Atoi(strings.Split(msg, ":")[1])
+			if err != nil {
+				fmt.Println(err)
+			}
+			reassignPrimChan <- newPrimaryId
 		} else {
-			resSet[reqNum] = struct{}{}
+			endInd := strings.Index(msg, ",")
+			req := msg[len("requestnum:"):endInd]
+			reqNum, _ := strconv.Atoi(req)
+			idInd := strings.Index(msg, "serverid:")
+			id := msg[idInd+len("serverid:"):]
+			_, exists := resSet[reqNum]
+			dup := false
+			if exists { //if duplicate
+				fmt.Println("request_num " + req + ": Discarded duplicate reply from S" + id)
+				dup = true
+			} else {
+				resSet[reqNum] = struct{}{}
+			}
+			repChan <- dup
 		}
-		repChan <- dup
+	}
+}
+
+func reassignPrimary(reassignPrimChan chan int, primaryConn *net.Conn, idToConnMap map[int]net.Conn) {
+	for {
+		select {
+		case newPrimary := <-reassignPrimChan:
+			*primaryConn = idToConnMap[newPrimary]
+		}
 	}
 }
 
@@ -136,10 +157,13 @@ func main() {
 
 	connMap := map[net.Conn]int{}
 	servMap := map[net.Conn]int{}
+	idToConnMap := map[int]net.Conn{}
 	msgChan := make(chan string)
 	repChan := make(chan bool)
+	reassignPrimChan := make(chan int)
 	var primaryConn net.Conn
-	for i, server := range args {
+	mode := string(args[0])
+	for i, server := range args[1:] {
 		// connect to primary replica server
 		conn, err := net.Dial("tcp", server+":8080")
 		if err != nil {
@@ -154,7 +178,9 @@ func main() {
 			fmt.Println("Error reading: ", err.Error())
 			return
 		}
+		fmt.Println(string(buf[:mlen]))
 		myID, err := strconv.Atoi(string(buf[:mlen]))
+		sendMessageToServer(conn, "ACK", myID, i+1)
 		if err != nil {
 			fmt.Println("Error converting ID data:", err.Error())
 			return
@@ -162,11 +188,17 @@ func main() {
 		fmt.Println("Received Client ID: ", myID)
 		connMap[conn] = myID
 		servMap[conn] = i + 1
+		idToConnMap[i+1] = conn
+
 		go listenToServerRoutine(conn, myID, i+1, msgChan, repChan)
-		if i == 0 {
-			primaryConn = conn
-		}
+		// if i == 0 {
+		// 	primaryConn = conn
+		// }
+		go reassignPrimary(reassignPrimChan, &primaryConn, idToConnMap)
 	}
-	go processMsgs(msgChan, repChan)
-	manuallySendIDRoutine(connMap, servMap, primaryConn, true)
+
+	go processMsgs(msgChan, repChan, reassignPrimChan)
+	isPassive := mode == "passive"
+	manuallySendIDRoutine(connMap, servMap, &primaryConn, isPassive)
+
 }
