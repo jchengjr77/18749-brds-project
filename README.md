@@ -22,7 +22,7 @@ Run GFD with:
 
 Run LFD with:
 
-`go run lfd/main.go 10 <checkpoint freq> <server hostname>`
+`go run lfd/main.go 10 <gfd hostname>`
 
 Run server with:
 

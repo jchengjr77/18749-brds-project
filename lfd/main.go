@@ -16,6 +16,9 @@ const (
 	SERVER_TYPE    = "tcp"
 	PORT           = "8081"
 	SERVER_RUN_CMD = "server/main.go"
+	HOST1 = ""
+	HOST2 = ""
+	HOST3 = ""
 )
 
 /*
@@ -42,7 +45,7 @@ func sendReelectionToServer(conn net.Conn) error {
 		fmt.Println("Error sending heartbeat: ", err.Error())
 		return err
 	}
-	fmt.Printf("[%s] Sent heartbeat to server\n", time.Now().Format(time.RFC850))
+	fmt.Printf("[%s] Sent reelection to server\n", time.Now().Format(time.RFC850))
 	return nil
 }
 
@@ -126,7 +129,7 @@ func listenForGFDCommands(gfdConn net.Conn, serverConn net.Conn) {
 		serverIdStr := strings.Split(string(buf[:mlen]), ":")[1]
 
 		if gfdCommand == "RELAUNCH" {
-			cmd := exec.Command("go", "run", "server/main.go", serverIdStr, "10", "0")
+			cmd := exec.Command("go", "run", "server/main.go", serverIdStr, "10", "0", HOST1, HOST2, HOST3)
 			stdout, err := cmd.Output()
 			if err != nil {
 				fmt.Println(err.Error())

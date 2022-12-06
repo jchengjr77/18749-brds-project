@@ -40,8 +40,8 @@ func sendRelaunchToLFD(serverID int, gfdConn net.Conn) {
 	fmt.Println("Relaunch sent!")
 }
 
-func sendElectionToLFD(serverID *int, gfdConn net.Conn) {
-	_, err := gfdConn.Write([]byte("ELECTED:" + strconv.Itoa(*serverID)))
+func sendElectionToLFD(serverID *int, lfdConn net.Conn) {
+	_, err := lfdConn.Write([]byte("ELECTED:" + strconv.Itoa(*serverID)))
 	if err != nil {
 		fmt.Println("Error sending message to server: ", err.Error())
 	}

@@ -134,7 +134,7 @@ func sendCheckpoint(host string, cpString string, incrChan chan bool) {
 	conn, err := net.Dial(SERVER_TYPE, host+":"+SVR_PORT)
 	if err != nil {
 		// handle connection error
-		fmt.Println("Error dialing backup replica: ", err.Error())
+		fmt.Println("Error dialing backup: ", err.Error())
 		return
 	}
 	_, err = conn.Write([]byte(cpString))
