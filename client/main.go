@@ -141,6 +141,7 @@ func reassignPrimary(reassignPrimChan chan int, primaryConn *net.Conn, idToConnM
 		select {
 		case newPrimary := <-reassignPrimChan:
 			*primaryConn = idToConnMap[newPrimary]
+			fmt.Printf(YELLOW+"[%s] re-election to %d\n"+RESET, time.Now().Format(time.RFC850), newPrimary)
 		}
 	}
 }

@@ -45,7 +45,7 @@ func sendReelectionToServer(conn net.Conn) error {
 		fmt.Println("Error sending heartbeat: ", err.Error())
 		return err
 	}
-	fmt.Printf("[%s] Sent reelection to server\n", time.Now().Format(time.RFC850))
+	fmt.Printf(YELLOW+"[%s] Sent reelection to server\n"+RESET, time.Now().Format(time.RFC850))
 	return nil
 }
 
