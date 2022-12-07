@@ -16,9 +16,9 @@ const (
 	SERVER_TYPE    = "tcp"
 	PORT           = "8081"
 	SERVER_RUN_CMD = "server/main.go"
-	HOST1 = ""
-	HOST2 = ""
-	HOST3 = ""
+	HOST1 = "nathans-mbp-7.wifi.local.cmu.edu"
+	HOST2 = "vigneshsmbp230.wifi.local.cmu.edu"
+	HOST3 = "jeremys-mbp-200.wifi.local.cmu.edu"
 )
 
 /*
