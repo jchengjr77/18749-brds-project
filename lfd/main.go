@@ -19,6 +19,14 @@ const (
 	HOST1 = "nathans-mbp-7.wifi.local.cmu.edu"
 	HOST2 = "vigneshsmbp230.wifi.local.cmu.edu"
 	HOST3 = "jeremys-mbp-200.wifi.local.cmu.edu"
+	RESET  = "\033[0m"
+	RED    = "\033[31m"
+	GREEN  = "\033[32m"
+	YELLOW = "\033[33m"
+	BLUE   = "\033[34m"
+	PURPLE = "\033[35m"
+	CYAN   = "\033[36m"
+	WHITE  = "\033[37m"
 )
 
 /*
