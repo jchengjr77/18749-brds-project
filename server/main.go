@@ -45,6 +45,7 @@ func printMsg(clientID int, serverID int, msg string, msgType string) {
 }
 
 func sendElectedToClient(clientConn net.Conn, serverID int) {
+	time.Sleep(10 * time.Second)
 	_, err := clientConn.Write([]byte("ELECTED:" + strconv.Itoa(serverID)))
 	if err != nil {
 		// handle write error
