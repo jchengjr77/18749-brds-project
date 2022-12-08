@@ -38,10 +38,18 @@ func printMsg(clientID int, serverID int, msg string, msgType string) {
 /*
  * sendMessageToServer sends a single message to the server
  */
-func sendMessageToServer(conn net.Conn, msg string, clientID int, serverID int) {
+func sendMessageToServer(conn net.Conn, msg string, clientID int, serverID int, connToNameMap *map[net.Conn]string) {
+	serverName := (*connToNameMap)[conn]
 	_, err := conn.Write([]byte(msg))
 	if err != nil {
-		fmt.Println("Error sending message to server: ", err.Error())
+		fmt.Println("Error sending message to server, redialing: ", err.Error())
+		newConn, err := net.Dial("tcp", serverName+":8080")
+		if err != nil {
+			// handle connection error
+			fmt.Println("Error redialing: ", err.Error())
+			return
+		}
+		(*connToNameMap)[newConn] = serverName
 	}
 	printMsg(clientID, serverID, msg, "request")
 }
@@ -49,9 +57,9 @@ func sendMessageToServer(conn net.Conn, msg string, clientID int, serverID int) 
 /*
  * manually send a message (your clientID) to the server
  */
-func manuallySendIDRoutine(connMap, servMap map[net.Conn]int, primaryConn *net.Conn, passive bool) {
+func manuallySendIDRoutine(connMap, servMap map[net.Conn]int, primaryConn *net.Conn, passive bool, connToNameMap *map[net.Conn]string) {
 	reqNum := 0
-	go automaticallySendIDRoutine(connMap, servMap, primaryConn, passive, &reqNum)
+	go automaticallySendIDRoutine(connMap, servMap, primaryConn, passive, &reqNum, connToNameMap)
 	for {
 		fmt.Println("Press 'Enter' to send message to server...")
 		fmt.Scanln()
@@ -62,7 +70,7 @@ func manuallySendIDRoutine(connMap, servMap map[net.Conn]int, primaryConn *net.C
 				continue
 			}
 			s := "requestnum:" + strconv.Itoa(reqNum) + ",clientid:" + strconv.Itoa(clientId)
-			go sendMessageToServer(conn, s, clientId, servMap[conn])
+			go sendMessageToServer(conn, s, clientId, servMap[conn], connToNameMap)
 		}
 		time.Sleep(2 * time.Second) //can send max once every 2 seconds
 		reqNum++
@@ -72,14 +80,14 @@ func manuallySendIDRoutine(connMap, servMap map[net.Conn]int, primaryConn *net.C
 /*
  * automatically send a message (your clientID) to the server
  */
-func automaticallySendIDRoutine(connMap, servMap map[net.Conn]int, primaryConn *net.Conn, passive bool, reqNum *int) {
+func automaticallySendIDRoutine(connMap, servMap map[net.Conn]int, primaryConn *net.Conn, passive bool, reqNum *int, connToNameMap *map[net.Conn]string) {
 	for {
 		for conn, clientId := range connMap {
 			if passive && conn != *primaryConn {
 				continue
 			}
 			s := "requestnum:" + strconv.Itoa(*reqNum) + ",clientid:" + strconv.Itoa(clientId)
-			go sendMessageToServer(conn, s, clientId, servMap[conn])
+			go sendMessageToServer(conn, s, clientId, servMap[conn], connToNameMap)
 		}
 		time.Sleep(5 * time.Second) //can send max once every 5 seconds
 		*reqNum++
@@ -142,6 +150,7 @@ func reassignPrimary(reassignPrimChan chan int, primaryConn *net.Conn, idToConnM
 		case newPrimary := <-reassignPrimChan:
 			*primaryConn = idToConnMap[newPrimary]
 			fmt.Printf(YELLOW+"[%s] re-election to %d\n"+RESET, time.Now().Format(time.RFC850), newPrimary)
+
 		}
 	}
 }
@@ -156,7 +165,18 @@ func main() {
 
 	args := os.Args[1:]
 
+	host1 := args[1:][0]
+	host2 := args[1:][1]
+	host3 := args[1:][2]
+
 	connMap := map[net.Conn]int{}
+	connToNameMap := map[net.Conn]string{}
+	idToNameMap := map[int]string{}
+
+	idToNameMap[1] = host1
+	idToNameMap[2] = host2
+	idToNameMap[3] = host3
+
 	servMap := map[net.Conn]int{}
 	idToConnMap := map[int]net.Conn{}
 	msgChan := make(chan string)
@@ -179,9 +199,12 @@ func main() {
 			fmt.Println("Error reading: ", err.Error())
 			return
 		}
+
+		connToNameMap[conn] = idToNameMap[i]
+
 		fmt.Println(string(buf[:mlen]))
 		myID, err := strconv.Atoi(string(buf[:mlen]))
-		sendMessageToServer(conn, "ACK", myID, i+1)
+		sendMessageToServer(conn, "ACK", myID, i+1, &connToNameMap)
 		if err != nil {
 			fmt.Println("Error converting ID data:", err.Error())
 			return
@@ -200,6 +223,6 @@ func main() {
 
 	go processMsgs(msgChan, repChan, reassignPrimChan)
 	isPassive := mode == "passive"
-	manuallySendIDRoutine(connMap, servMap, &primaryConn, isPassive)
+	manuallySendIDRoutine(connMap, servMap, &primaryConn, isPassive, &connToNameMap)
 
 }
