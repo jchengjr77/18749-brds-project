@@ -17,7 +17,7 @@ const (
 	PORT           = "8081"
 	SERVER_RUN_CMD = "server/main.go"
 	HOST1          = "Nathans-MacBook-Pro-7.local"
-	HOST2          = "Wills-MacBook-Pro-4.local"
+	HOST2          = "Vigneshs-MacBook-Pro-230.local"
 	HOST3          = "Jeremys-MacBook-Pro-200.local"
 	RESET          = "\033[0m"
 	RED            = "\033[31m"
