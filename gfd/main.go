@@ -45,7 +45,7 @@ func sendElectionToLFD(serverID *int, lfdConn net.Conn) {
 	if err != nil {
 		fmt.Println("Error sending message to server: ", err.Error())
 	}
-	fmt.Println("Reelection sent!")
+	fmt.Println("Reelection sent to: " + strconv.Itoa(*serverID))
 }
 
 /*

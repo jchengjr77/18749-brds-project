@@ -50,7 +50,7 @@ func sendReelectionToServer(conn net.Conn) error {
 	_, err := conn.Write([]byte("ELECTED"))
 	if err != nil {
 		// If server crashes, we should get a timeout / broken pipe error
-		fmt.Println("Error sending heartbeat: ", err.Error())
+		fmt.Println("Error sending reelection: ", err.Error())
 		return err
 	}
 	fmt.Printf(YELLOW+"[%s] Sent reelection to server\n"+RESET, time.Now().Format(time.RFC850))
@@ -60,7 +60,7 @@ func sendReelectionToServer(conn net.Conn) error {
 /*
  * sendHeartbeatsRoutine is a routine that sends a heartbeat to server every heartbeatFreq seconds
  */
-func sendHeartbeatsRoutine(conn net.Conn, heartbeatFreq int, myId int, gfdConn net.Conn, isPrimary bool) {
+func sendHeartbeatsRoutine(conn net.Conn, heartbeatFreq int, myId int, gfdConn net.Conn, isPrimary bool, haltChannel chan int) {
 	first := true
 	for {
 		err := sendHeartbeatToServer(conn, "LFD"+strconv.Itoa(myId)+" heartbeat")
@@ -72,6 +72,7 @@ func sendHeartbeatsRoutine(conn net.Conn, heartbeatFreq int, myId int, gfdConn n
 				fmt.Printf("GFD has crashed!\n", time.Now().Format(time.RFC850))
 				return
 			}
+			haltChannel <- 1
 			return
 		}
 		if first {
@@ -93,15 +94,20 @@ func sendHeartbeatsRoutine(conn net.Conn, heartbeatFreq int, myId int, gfdConn n
 /*
  * listenToServerRoutine is a routine that listens to messages from server
  */
-func listenToServerRoutine(conn net.Conn) {
+func listenToServerRoutine(conn net.Conn, haltChannel chan int) {
 	for {
-		buf := make([]byte, 1024)
-		mlen, err := conn.Read(buf)
-		if err != nil {
-			fmt.Println("Error reading: ", err.Error())
+		select {
+		case <-haltChannel:
 			return
+		default:
+			buf := make([]byte, 1024)
+			mlen, err := conn.Read(buf)
+			if err != nil {
+				fmt.Println("Error reading: ", err.Error())
+				return
+			}
+			fmt.Printf("[%s] Received %s from server\n", time.Now().Format(time.RFC850), string(buf[:mlen]))
 		}
-		fmt.Printf("[%s] Received %s from server\n", time.Now().Format(time.RFC850), string(buf[:mlen]))
 	}
 }
 
@@ -124,32 +130,36 @@ func listenForServers(listener net.Listener, serverChan chan net.Conn) {
  * Protocol for relaunch messages are assumed to be RELAUNCH:<serverID>
 * Protocol for reelection messages are assumed to be ELECTED:<serverID>
 */
-func listenForGFDCommands(gfdConn net.Conn, serverConn net.Conn) {
+func listenForGFDCommands(gfdConn net.Conn, serverConn net.Conn, haltChannel chan int) {
 	for {
-		buf := make([]byte, 1024)
-		mlen, err := gfdConn.Read(buf)
-		if err != nil {
-			fmt.Println("Error reading: ", err.Error())
+		select {
+		case <-haltChannel:
 			return
-		}
-		fmt.Printf("[%s] Received %s from GFD\n", time.Now().Format(time.RFC850), string(buf[:mlen]))
-		gfdCommand := strings.Split(string(buf[:mlen]), ":")[0]
-		serverIdStr := strings.Split(string(buf[:mlen]), ":")[1]
-
-		if gfdCommand == "RELAUNCH" {
-			cmd := exec.Command("go", "run", "server/main.go", serverIdStr, "10", "0", HOST1, HOST2, HOST3)
-			stdout, err := cmd.Output()
+		default:
+			buf := make([]byte, 1024)
+			mlen, err := gfdConn.Read(buf)
 			if err != nil {
-				fmt.Println(err.Error())
+				fmt.Println("Error reading: ", err.Error())
 				return
 			}
-			fmt.Print(string(stdout))
-		} else if gfdCommand == "ELECTED" {
-			sendReelectionToServer(serverConn)
+			fmt.Printf("[%s] Received %s from GFD\n", time.Now().Format(time.RFC850), string(buf[:mlen]))
+			gfdCommand := strings.Split(string(buf[:mlen]), ":")[0]
+			serverIdStr := strings.Split(string(buf[:mlen]), ":")[1]
+
+			if gfdCommand == "RELAUNCH" {
+				cmd := exec.Command("go", "run", "server/main.go", serverIdStr, "10", "0", HOST1, HOST2, HOST3)
+				stdout, err := cmd.Output()
+				if err != nil {
+					fmt.Println(err.Error())
+					return
+				}
+				fmt.Print(string(stdout))
+			} else if gfdCommand == "ELECTED" {
+				sendReelectionToServer(serverConn)
+			}
+
+			fmt.Printf("[%s] Received %s from GFD\n", time.Now().Format(time.RFC850), string(buf[:mlen]))
 		}
-
-		fmt.Printf("[%s] Received %s from GFD\n", time.Now().Format(time.RFC850), string(buf[:mlen]))
-
 	}
 }
 
@@ -202,6 +212,7 @@ func main() {
 	defer listener.Close()
 
 	newServerChan := make(chan net.Conn)
+	haltChannel := make(chan int)
 	go listenForServers(listener, newServerChan)
 	for {
 		select {
@@ -222,9 +233,9 @@ func main() {
 			}
 			fmt.Println("Received ID from server: ", serverID)
 
-			go sendHeartbeatsRoutine(conn, heartbeatFreq, serverID, gfdConn, isPrimary)
-			go listenToServerRoutine(conn)
-			go listenForGFDCommands(gfdConn, conn)
+			go sendHeartbeatsRoutine(conn, heartbeatFreq, serverID, gfdConn, isPrimary, haltChannel)
+			go listenToServerRoutine(conn, haltChannel)
+			go listenForGFDCommands(gfdConn, conn, haltChannel)
 		}
 	}
 }
