@@ -45,7 +45,6 @@ func printMsg(clientID int, serverID int, msg string, msgType string) {
 }
 
 func sendElectedToClient(clientConn net.Conn, serverID int) {
-	time.Sleep(10 * time.Second)
 	_, err := clientConn.Write([]byte("ELECTED:" + strconv.Itoa(serverID)))
 	if err != nil {
 		// handle write error
@@ -86,7 +85,7 @@ func handleClient(conn net.Conn, clientID int, serverID int, stateChan chan int,
 		clientIDInd := strings.Index(msg, "clientid:")
 		clientID, err := strconv.Atoi(msg[clientIDInd+len("clientid:"):])
 		if err != nil {
-			fmt.Println("Error converting using Atoi after clientID: ", err.Error())
+			fmt.Println("Error converting using Atoi after clientI: ", err.Error())
 			continue
 		}
 		stateChan <- clientID
