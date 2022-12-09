@@ -38,7 +38,7 @@ func printMsg(clientID int, serverID int, msg string, msgType string) {
 /*
  * sendMessageToServer sends a single message to the server
  */
-func sendMessageToServer(conn net.Conn, msg string, clientID int, serverID int, connToNameMap *map[net.Conn]string, connMap *map[net.Conn]int, servMap *map[net.Conn]int, idToConnMap *map[int]net.Conn, serverName string) {
+func sendMessageToServer(conn net.Conn, msg string, clientID int, serverID int) {
 	_, err := conn.Write([]byte(msg))
 	if err != nil {
 		fmt.Println("Error in sendMessageToServer: ", err.Error())
@@ -55,7 +55,7 @@ func manuallySendIDRoutine(connMap *map[net.Conn]int, servMap *map[net.Conn]int,
 	for {
 		fmt.Println("Press 'Enter' to send message to server...")
 		fmt.Scanln()
-		for conn, serverName := range *connToNameMap {
+		for conn, _ := range *connToNameMap {
 			clientId := (*connMap)[conn]
 			fmt.Println("CURR CONN: " + strconv.Itoa((*servMap)[conn]))
 			fmt.Println("PRIM CONN: " + strconv.Itoa((*servMap)[*primaryConn]))
@@ -63,7 +63,7 @@ func manuallySendIDRoutine(connMap *map[net.Conn]int, servMap *map[net.Conn]int,
 				continue
 			}
 			s := "requestnum:" + strconv.Itoa(reqNum) + ",clientid:" + strconv.Itoa(clientId)
-			go sendMessageToServer(conn, s, clientId, (*servMap)[conn], connToNameMap, connMap, servMap, idToConnMap, serverName)
+			go sendMessageToServer(conn, s, clientId, (*servMap)[conn])
 		}
 		time.Sleep(2 * time.Second) //can send max once every 2 seconds
 		reqNum++
@@ -76,13 +76,13 @@ func manuallySendIDRoutine(connMap *map[net.Conn]int, servMap *map[net.Conn]int,
 func automaticallySendIDRoutine(connMap *map[net.Conn]int, servMap *map[net.Conn]int, primaryConn *net.Conn, passive bool, reqNum *int, connToNameMap *map[net.Conn]string, idToConnMap *map[int]net.Conn) {
 	for {
 		fmt.Println("sending messages out")
-		for conn, serverName := range *connToNameMap {
+		for conn, _ := range *connToNameMap {
 			clientId := (*connMap)[conn]
 			if passive && conn != *primaryConn {
 				continue
 			}
 			s := "requestnum:" + strconv.Itoa(*reqNum) + ",clientid:" + strconv.Itoa(clientId)
-			go sendMessageToServer(conn, s, clientId, (*servMap)[conn], connToNameMap, connMap, servMap, idToConnMap, serverName)
+			go sendMessageToServer(conn, s, clientId, (*servMap)[conn])
 		}
 		time.Sleep(5 * time.Second) //can send max once every 5 seconds
 		*reqNum++
@@ -165,7 +165,6 @@ func reassignPrimary(reassignPrimChan chan int, primaryConn *net.Conn, idToConnM
 		case newPrimary := <-reassignPrimChan:
 			*primaryConn = (*idToConnMap)[newPrimary]
 			fmt.Printf(YELLOW+"[%s] re-election to %d\n"+RESET, time.Now().Format(time.RFC850), newPrimary)
-
 		}
 	}
 }
@@ -220,7 +219,7 @@ func main() {
 
 		fmt.Println(string(buf[:mlen]))
 		myID, err := strconv.Atoi(string(buf[:mlen]))
-		sendMessageToServer(conn, "ACK", myID, i+1, &connToNameMap, &connMap, &servMap, &idToConnMap, server)
+		sendMessageToServer(conn, "ACK", myID, i+1)
 		if err != nil {
 			fmt.Println("Error converting ID data:", err.Error())
 			return
