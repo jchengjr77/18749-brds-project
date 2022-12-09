@@ -8,6 +8,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -47,32 +48,31 @@ func sendMessageToServer(conn net.Conn, msg string, clientID int, serverID int) 
 	printMsg(clientID, serverID, msg, "request")
 }
 
-
 /*
  * manually send a message (your clientID) to the server
  */
-func manuallySendIDRoutine(connMap *map[net.Conn]int, servMap *map[net.Conn]int, primaryConn *net.Conn, passive bool, connToNameMap *map[net.Conn]string, idToConnMap *map[int]net.Conn) {
-	reqNum := 0
-	for {
-		fmt.Println("Press 'Enter' to send message to server...")
-		fmt.Scanln()
-		for conn, _ := range *connToNameMap {
-			clientId := (*connMap)[conn]
-			fmt.Println("CURR CONN: " + strconv.Itoa((*servMap)[conn]))
-			fmt.Println("PRIM CONN: " + strconv.Itoa((*servMap)[*primaryConn]))
-			if passive && (*servMap)[conn] != (*servMap)[*primaryConn] {
-				continue
-			}
-			s := "requestnum:" + strconv.Itoa(reqNum) + ",clientid:" + strconv.Itoa(clientId)
-			go sendMessageToServer(conn, s, clientId, (*servMap)[conn])
-		}
-		time.Sleep(2 * time.Second) //can send max once every 2 seconds
-		reqNum++
-	}
-}
+// func manuallySendIDRoutine(connMap *map[net.Conn]int, servMap *map[net.Conn]int, primaryConn *net.Conn, passive bool, connToNameMap *map[net.Conn]string, idToConnMap *map[int]net.Conn) {
+// 	reqNum := 0
+// 	for {
+// 		fmt.Println("Press 'Enter' to send message to server...")
+// 		fmt.Scanln()
+// 		for conn, _ := range *connToNameMap {
+// 			clientId := (*connMap)[conn]
+// 			fmt.Println("CURR CONN: " + strconv.Itoa((*servMap)[conn]))
+// 			fmt.Println("PRIM CONN: " + strconv.Itoa((*servMap)[*primaryConn]))
+// 			if passive && (*servMap)[conn] != (*servMap)[*primaryConn] {
+// 				continue
+// 			}
+// 			s := "requestnum:" + strconv.Itoa(reqNum) + ",clientid:" + strconv.Itoa(clientId)
+// 			go sendMessageToServer(conn, s, clientId, (*servMap)[conn])
+// 		}
+// 		time.Sleep(2 * time.Second) //can send max once every 2 seconds
+// 		reqNum++
+// 	}
+// }
 
 func automaticallySendIDRoutine(clientID, serverID int, conn net.Conn) {
-	reqNum := 0;
+	reqNum := 0
 	for {
 		s := "requestnum:" + strconv.Itoa(reqNum) + ",clientid:" + strconv.Itoa(clientID)
 		go sendMessageToServer(conn, s, clientID, serverID)
@@ -103,10 +103,10 @@ func automaticallySendIDRoutine(clientID, serverID int, conn net.Conn) {
 /*
  * listenToServerRoutine is a routine that listens to messages from server
  */
-func listenToServerRoutine(conn *net.Conn, myID int, serverID int, serverName string, msgChan chan string, repChan chan bool, connMap *map[net.Conn]int, servMap *map[net.Conn]int, connToNameMap *map[net.Conn]string, idToConnMap *map[int]net.Conn) {
+func listenToServerRoutine(conn net.Conn, myID int, serverID int, serverName string, msgChan chan string, repChan chan bool, connMap *map[net.Conn]int, servMap *map[net.Conn]int, connToNameMap *map[net.Conn]string, idToConnMap *map[int]net.Conn, m *sync.Mutex) {
 	for {
 		buf := make([]byte, 1024)
-		mlen, err := (*conn).Read(buf)
+		mlen, err := (conn).Read(buf)
 		if err != nil {
 			fmt.Println("Error reading: ", err.Error())
 			fmt.Println("Redialing", serverName)
@@ -117,15 +117,17 @@ func listenToServerRoutine(conn *net.Conn, myID int, serverID int, serverName st
 					break
 				}
 			}
+			(*m).Lock()
 			fmt.Println("Redialed ", serverName)
-			delete((*connToNameMap), *conn)
-			delete((*connMap), *conn)
-			delete((*servMap), *conn)
+			delete((*connToNameMap), conn)
+			delete((*connMap), conn)
+			delete((*servMap), conn)
 			(*connToNameMap)[newConn] = serverName
 			(*connMap)[newConn] = myID
 			(*servMap)[newConn] = serverID
 			(*idToConnMap)[serverID] = newConn
-			(*conn) = newConn
+			(conn) = newConn
+			(*m).Unlock()
 		}
 		msgChan <- string(buf[:mlen])
 		dup := <-repChan
@@ -170,12 +172,14 @@ func processMsgs(msgChan chan string, repChan chan bool, reassignPrimChan chan i
 	}
 }
 
-func reassignPrimary(reassignPrimChan chan int, primaryConn *net.Conn, idToConnMap *map[int]net.Conn) {
+func reassignPrimary(reassignPrimChan chan int, primaryConn *net.Conn, idToConnMap *map[int]net.Conn, m *sync.Mutex) {
 	for {
 		select {
 		case newPrimary := <-reassignPrimChan:
+			(*m).Lock()
 			*primaryConn = (*idToConnMap)[newPrimary]
 			fmt.Printf(YELLOW+"[%s] re-election to %d\n"+RESET, time.Now().Format(time.RFC850), newPrimary)
+			(*m).Unlock()
 		}
 	}
 }
@@ -194,6 +198,8 @@ func main() {
 	host2 := args[1:][1]
 	host3 := args[1:][2]
 
+	var m sync.Mutex
+
 	connMap := map[net.Conn]int{}
 
 	connToNameMap := map[net.Conn]string{}
@@ -211,7 +217,7 @@ func main() {
 	var primaryConn net.Conn
 	mode := string(args[0])
 	for i, server := range args[1:] {
-		// connect to primary replica server
+		// connect to replica server
 		conn, err := net.Dial("tcp", server+":8080")
 		if err != nil {
 			// handle connection error
@@ -240,13 +246,35 @@ func main() {
 		servMap[conn] = i + 1
 		idToConnMap[i+1] = conn
 
-		go listenToServerRoutine(&conn, myID, i+1, server, msgChan, repChan, &connMap, &servMap, &connToNameMap, &idToConnMap)
-		go reassignPrimary(reassignPrimChan, &primaryConn, &idToConnMap)
+		go listenToServerRoutine(conn, myID, i+1, server, msgChan, repChan, &connMap, &servMap, &connToNameMap, &idToConnMap, &m)
+		go reassignPrimary(reassignPrimChan, &primaryConn, &idToConnMap, &m)
 		go automaticallySendIDRoutine(myID, i+1, conn)
 	}
 
 	go processMsgs(msgChan, repChan, reassignPrimChan)
 	isPassive := mode == "passive"
-	manuallySendIDRoutine(&connMap, &servMap, &primaryConn, isPassive, &connToNameMap, &idToConnMap)
+	// manuallySendIDRoutine(&connMap, &servMap, &primaryConn, isPassive, &connToNameMap, &idToConnMap)
 
+	// Start the manual sending
+	reqNum := 0
+	for {
+		fmt.Println("Press 'Enter' to send message to server...")
+		fmt.Scanln()
+		m.Lock()
+		for conn, _ := range connToNameMap {
+			if isPassive && (servMap)[conn] != (servMap)[primaryConn] {
+				continue
+			}
+			manualToServer(reqNum, conn, connMap[conn], servMap[conn])
+		}
+		m.Unlock()
+		time.Sleep(2 * time.Second) //can send max once every 2 seconds
+		reqNum++
+
+	}
+}
+
+func manualToServer(reqNum int, conn net.Conn, clientID int, serverID int) {
+	s := "requestnum:" + strconv.Itoa(reqNum) + ",clientid:" + strconv.Itoa(clientID)
+	go sendMessageToServer(conn, s, clientID, serverID)
 }
