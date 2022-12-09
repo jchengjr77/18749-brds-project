@@ -86,7 +86,7 @@ func handleClient(conn net.Conn, clientID int, serverID int, stateChan chan int,
 		clientIDInd := strings.Index(msg, "clientid:")
 		clientID, err := strconv.Atoi(msg[clientIDInd+len("clientid:"):])
 		if err != nil {
-			fmt.Println("Error converting using Atoi: ", err.Error())
+			fmt.Println("Error converting using Atoi after clientID: ", err.Error())
 			continue
 		}
 		stateChan <- clientID
@@ -116,12 +116,12 @@ func handlePrimary(conn net.Conn, cpChan chan Pair) {
 		parts := strings.Split(msg, ",")
 		cpNum, err := strconv.Atoi(parts[0])
 		if err != nil {
-			fmt.Println("Error converting using Atoi: ", err.Error())
+			fmt.Println("Error converting using Atoi in handlePrimary: ", err.Error())
 			continue
 		}
 		cpState, err := strconv.Atoi(parts[1])
 		if err != nil {
-			fmt.Println("Error converting using Atoi: ", err.Error())
+			fmt.Println("Error converting using Atoi in handlePrimary: ", err.Error())
 			continue
 		}
 		cpChan <- Pair{cpNum, cpState}
