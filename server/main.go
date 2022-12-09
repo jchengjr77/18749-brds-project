@@ -70,7 +70,7 @@ func handleClient(conn net.Conn, clientID int, serverID int, stateChan chan int,
 	msg := string(buf[:mlen])
 	fmt.Println("Recieved: " + msg)
 	if isPrimary == 1 {
-		fmt.Println("Sending elected to client...")
+		fmt.Println("Sending elected to client (in handleClient)...")
 		sendElectedToClient(conn, serverId)
 	}
 	for {
