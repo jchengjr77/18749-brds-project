@@ -81,7 +81,7 @@ func handleLFD(conn net.Conn, lfdID int, lfdUpdatesChan chan LFDUpdate) {
 }
 
 // parses LFD update and adds/removes server from list
-func handleUpdate(update LFDUpdate, servers *map[int]bool, lfds map[int]net.Conn, mode string, primary *int) {
+func handleUpdate(update LFDUpdate, servers *map[int]bool, lfds map[int]net.Conn, mode string, primary *int, relaunchEnabled bool) {
 	if update.action == "add" {
 		_, exists := (*servers)[update.serverID]
 		if exists {
@@ -105,7 +105,7 @@ func handleUpdate(update LFDUpdate, servers *map[int]bool, lfds map[int]net.Conn
 			return
 		}
 		delete(*servers, update.serverID)
-		if len(*servers) < 3 {
+		if len(*servers) < 3 && relaunchEnabled {
 			sendRelaunchToLFD(update.serverID, lfds[update.serverID])
 		}
 		// Tolerate the primary failing once
@@ -143,11 +143,14 @@ func main() {
 	fmt.Println("---------- Global Fault Detector started ----------")
 
 	args := os.Args[1:]
-	if len(args) < 1 {
-		fmt.Printf("go run gfd/main.go <mode: 'active' or 'passive'>")
+	if len(args) < 2 {
+		fmt.Printf("go run gfd/main.go <mode: 'active' or 'passive'> <relaunchEnabled?")
 		return
 	}
 	mode := args[0]
+
+	relaunchMode, err := strconv.Atoi(args[1])
+	relaunchEnabled := (relaunchMode == 1)
 
 	// lfd IDs, monotonically increasing
 	lfdID := 1
@@ -183,7 +186,7 @@ func main() {
 	for {
 		select {
 		case update := <-lfdUpdatesChan:
-			handleUpdate(update, &servers, lfds, mode, &primary)
+			handleUpdate(update, &servers, lfds, mode, &primary, relaunchEnabled)
 		case conn := <-newLFDChan:
 			go handleLFD(conn, lfdID, lfdUpdatesChan)
 			lfds[lfdID] = conn
