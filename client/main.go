@@ -38,27 +38,10 @@ func printMsg(clientID int, serverID int, msg string, msgType string) {
 /*
  * sendMessageToServer sends a single message to the server
  */
-func sendMessageToServer(conn *net.Conn, msg string, clientID int, serverID int, connToNameMap *map[net.Conn]string, connMap *map[net.Conn]int, servMap *map[net.Conn]int, idToConnMap *map[int]net.Conn, serverName string) {
-	_, err := (*conn).Write([]byte(msg))
+func sendMessageToServer(conn net.Conn, msg string, clientID int, serverID int, connToNameMap *map[net.Conn]string, connMap *map[net.Conn]int, servMap *map[net.Conn]int, idToConnMap *map[int]net.Conn, serverName string) {
+	_, err := conn.Write([]byte(msg))
 	if err != nil {
-		fmt.Println("Error sending message to server: ", err.Error())
-		fmt.Println("Redialing", serverName)
-		var newConn net.Conn
-		for {
-			newConn, err = net.Dial("tcp", serverName+":8080")
-			if err == nil {
-				break
-			}
-		}
-		fmt.Println("Redialed ", serverName)
-		delete((*connToNameMap), (*conn))
-		delete((*connMap), (*conn))
-		delete((*servMap), (*conn))
-		(*connToNameMap)[newConn] = serverName
-		(*connMap)[newConn] = clientID
-		(*servMap)[newConn] = serverID
-		(*idToConnMap)[serverID] = newConn
-		(*conn) = newConn
+		fmt.Println("Error in sendMessageToServer: ", err.Error())
 	}
 	printMsg(clientID, serverID, msg, "request")
 }
@@ -80,7 +63,7 @@ func manuallySendIDRoutine(connMap *map[net.Conn]int, servMap *map[net.Conn]int,
 				continue
 			}
 			s := "requestnum:" + strconv.Itoa(reqNum) + ",clientid:" + strconv.Itoa(clientId)
-			go sendMessageToServer(&conn, s, clientId, (*servMap)[conn], connToNameMap, connMap, servMap, idToConnMap, serverName)
+			go sendMessageToServer(conn, s, clientId, (*servMap)[conn], connToNameMap, connMap, servMap, idToConnMap, serverName)
 		}
 		time.Sleep(2 * time.Second) //can send max once every 2 seconds
 		reqNum++
@@ -99,7 +82,7 @@ func automaticallySendIDRoutine(connMap *map[net.Conn]int, servMap *map[net.Conn
 				continue
 			}
 			s := "requestnum:" + strconv.Itoa(*reqNum) + ",clientid:" + strconv.Itoa(clientId)
-			go sendMessageToServer(&conn, s, clientId, (*servMap)[conn], connToNameMap, connMap, servMap, idToConnMap, serverName)
+			go sendMessageToServer(conn, s, clientId, (*servMap)[conn], connToNameMap, connMap, servMap, idToConnMap, serverName)
 		}
 		time.Sleep(5 * time.Second) //can send max once every 5 seconds
 		*reqNum++
@@ -237,7 +220,7 @@ func main() {
 
 		fmt.Println(string(buf[:mlen]))
 		myID, err := strconv.Atoi(string(buf[:mlen]))
-		sendMessageToServer(&conn, "ACK", myID, i+1, &connToNameMap, &connMap, &servMap, &idToConnMap, server)
+		sendMessageToServer(conn, "ACK", myID, i+1, &connToNameMap, &connMap, &servMap, &idToConnMap, server)
 		if err != nil {
 			fmt.Println("Error converting ID data:", err.Error())
 			return
