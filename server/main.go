@@ -344,6 +344,7 @@ func main() {
 			my_checkpoint_count++
 		case <-electedPrimaryChan:
 			fmt.Println("MADE MYSELF A PRIMARY")
+			fmt.Println("MADE MYSELF A PRIMARY")
 			isPrimary = 1
 			go sendCheckpointsRoutine(
 				checkpointFreq,
