@@ -99,8 +99,8 @@ func handleClient(conn net.Conn, clientID int, serverID int, stateChan chan int,
 	}
 }
 
-func handlePrimary(conn net.Conn, cpChan chan Pair) {
-	fmt.Println("New Primary Replica Detected.")
+func handleNewServer(conn net.Conn, cpChan chan Pair) {
+	fmt.Println("New Server Replica Detected.")
 	for {
 		buf := make([]byte, 1024)
 		mlen, err := conn.Read(buf)
@@ -115,12 +115,12 @@ func handlePrimary(conn net.Conn, cpChan chan Pair) {
 		parts := strings.Split(msg, ",")
 		cpNum, err := strconv.Atoi(parts[0])
 		if err != nil {
-			fmt.Println("Error converting using Atoi in handlePrimary: ", err.Error())
+			fmt.Println("Error converting using Atoi in handleNewServer: ", err.Error())
 			continue
 		}
 		cpState, err := strconv.Atoi(parts[1])
 		if err != nil {
-			fmt.Println("Error converting using Atoi in handlePrimary: ", err.Error())
+			fmt.Println("Error converting using Atoi in handleNewServer: ", err.Error())
 			continue
 		}
 		cpChan <- Pair{cpNum, cpState}
@@ -145,6 +145,7 @@ func sendCheckpoint(host string, cpString string, incrChan chan bool) {
 	}
 	fmt.Printf(GREEN+"[%s] Sent checkpoint [%s] to backup replica\n"+RESET, time.Now().Format(time.RFC850), cpString)
 	incrChan <- true
+	conn.Close()
 }
 
 func sendCheckpointsRoutine(checkpointFreq int, backupHostnames []string, cpCount *int, state *int, incrChan chan bool) {
@@ -170,7 +171,7 @@ func listenerChannelWrapper(listener net.Listener, newClientChan chan net.Conn) 
 	}
 }
 
-func primaryReplicaListenerWrapper(listener net.Listener, newPrimaryChan chan net.Conn) {
+func serverReplicaListenerWrapper(listener net.Listener, newServerChan chan net.Conn) {
 	for {
 		conn, err := listener.Accept()
 		if err != nil {
@@ -178,7 +179,7 @@ func primaryReplicaListenerWrapper(listener net.Listener, newPrimaryChan chan ne
 			fmt.Println("Error accepting: ", err.Error())
 			return
 		}
-		newPrimaryChan <- conn
+		newServerChan <- conn
 	}
 }
 
@@ -270,7 +271,7 @@ func main() {
 	incrementChan := make(chan bool)
 
 	// make channels for new primary replica messages
-	newPrimaryChan := make(chan net.Conn)
+	newServerChan := make(chan net.Conn)
 	checkpointChan := make(chan Pair) // (checkpoint num, state)
 
 	// make channels for new primary replica messages
@@ -288,14 +289,16 @@ func main() {
 	}
 
 	// listen for new primary replica if needed
-	primaryReplicaListener, err := net.Listen(SERVER_TYPE, ":"+SVR_PORT)
+	serverReplicaListener, err := net.Listen(SERVER_TYPE, ":"+SVR_PORT)
 	if err != nil {
-		primaryReplicaListener, err = net.Listen(SERVER_TYPE, ":"+SVR_PORT2)
-		if err != nil {
-			// handle server initialization error
-			fmt.Println("Error initializing: ", err.Error())
-			return
-		}
+		// serverReplicaListener, err = net.Listen(SERVER_TYPE, ":"+SVR_PORT2)
+		// if err != nil {
+		// 	// handle server initialization error
+		// 	fmt.Println("Error initializing: ", err.Error())
+		// 	return
+		// }
+		fmt.Println("Error initializing serverReplicaListener: ", err.Error())
+		return
 	}
 
 	lfdConn := connectToLFD(serverId, isPrimary)
@@ -305,7 +308,7 @@ func main() {
 	}
 	go listenLFD(lfdConn, electedPrimaryChan)
 	go listenerChannelWrapper(listener, newClientChan)
-	go primaryReplicaListenerWrapper(primaryReplicaListener, newPrimaryChan)
+	go serverReplicaListenerWrapper(serverReplicaListener, newServerChan)
 	if isPrimary == 1 {
 		go sendCheckpointsRoutine(
 			checkpointFreq,
@@ -316,7 +319,7 @@ func main() {
 	}
 
 	defer listener.Close()
-	defer primaryReplicaListener.Close()
+	defer serverReplicaListener.Close()
 
 	for {
 		select {
@@ -338,8 +341,8 @@ func main() {
 					fmt.Println("i_am_ready: " + strconv.Itoa(i_am_ready))
 				}
 			}
-		case conn := <-newPrimaryChan:
-			go handlePrimary(conn, checkpointChan)
+		case conn := <-newServerChan:
+			go handleNewServer(conn, checkpointChan)
 		case <-incrementChan:
 			my_checkpoint_count++
 		case <-electedPrimaryChan:
