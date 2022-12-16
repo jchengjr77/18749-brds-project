@@ -16,17 +16,17 @@ const (
 	SERVER_TYPE    = "tcp"
 	PORT           = "8081"
 	SERVER_RUN_CMD = "server/main.go"
-	HOST1 = "Nathans-MacBook-Pro-7.local"
-	HOST2 = "Vigneshs-MacBook-Pro-230.local"
-	HOST3 = "Jeremys-MacBook-Pro-200.local"
-	RESET  = "\033[0m"
-	RED    = "\033[31m"
-	GREEN  = "\033[32m"
-	YELLOW = "\033[33m"
-	BLUE   = "\033[34m"
-	PURPLE = "\033[35m"
-	CYAN   = "\033[36m"
-	WHITE  = "\033[37m"
+	HOST1          = "Nathans-MacBook-Pro-7.local"
+	HOST2          = "Vigneshs-MacBook-Pro-230.local"
+	HOST3          = "Jeremys-MacBook-Pro-200.local"
+	RESET          = "\033[0m"
+	RED            = "\033[31m"
+	GREEN          = "\033[32m"
+	YELLOW         = "\033[33m"
+	BLUE           = "\033[34m"
+	PURPLE         = "\033[35m"
+	CYAN           = "\033[36m"
+	WHITE          = "\033[37m"
 )
 
 /*
@@ -137,7 +137,10 @@ func listenForGFDCommands(gfdConn net.Conn, serverConn net.Conn) {
 		serverIdStr := strings.Split(string(buf[:mlen]), ":")[1]
 
 		if gfdCommand == "RELAUNCH" {
-			cmd := exec.Command("go", "run", "server/main.go", serverIdStr, "10", "0", HOST1, HOST2, HOST3)
+			script_command := "go run /Users/vignesh/school/BRDS/18749-brds-project/server/main.go " + serverIdStr + " 10 0 " + HOST1 + " " + HOST2 + " " + HOST3
+			main_command := "import appscript; appscript.app('Terminal').do_script('" + script_command + "')"
+			cmd := exec.Command("python3", "-c", main_command)
+			// cmd := exec.Command("go", "run", "server/main.go", serverIdStr, "10", "0", HOST1, HOST2, HOST3)
 			stdout, err := cmd.Output()
 			if err != nil {
 				fmt.Println(err.Error())
